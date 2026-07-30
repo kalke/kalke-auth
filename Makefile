@@ -1,4 +1,4 @@
-.PHONY: help up down logs restart ps token jwks open-admin
+.PHONY: help up down destroy logs restart ps token m2m-token jwks open-admin
 
 COMPOSE ?= docker compose
 PUBLIC_PORT ?= 8443
@@ -10,6 +10,8 @@ DEMO_USER ?= demo@kalke.local
 DEMO_PASSWORD ?= DemoPass123!
 CLI_ID ?= kalke-cli
 CLI_SECRET ?= kalke-cli-dev-secret
+M2M_ID ?= pde-m2m
+M2M_SECRET ?= pde-m2m-dev-secret
 
 help: ## Show targets
 	@grep -E '^[a-zA-Z_-]+:.*?##' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?##"}; {printf "  %-14s %s\n", $$1, $$2}'
@@ -21,9 +23,13 @@ up: ## Start Postgres + Keycloak (internal) + Caddy (public)
 	@echo "JWKS:         $(JWKS_URL)"
 	@echo "Admin UI:     http://localhost:$(PUBLIC_PORT)/admin/ (loopback only)"
 	@echo "Demo user:    $(DEMO_USER) / $(DEMO_PASSWORD)"
+	@echo "M2M client:   $(M2M_ID) (client_credentials)"
 
-down: ## Stop and remove containers
+down: ## Stop and remove containers (keeps DB volume)
 	$(COMPOSE) down
+
+destroy: ## Stop and delete volumes (re-imports realm on next up)
+	$(COMPOSE) down -v
 
 restart: ## Restart stack
 	$(COMPOSE) restart
@@ -37,7 +43,7 @@ ps: ## Show compose status
 jwks: ## Fetch JWKS via the public proxy (not Keycloak internal port)
 	curl -fsS "$(JWKS_URL)" | head -c 400; echo
 
-token: ## Dev smoke: password grant → access_token (kalke-cli only)
+token: ## Dev smoke: password grant → access_token (kalke-cli / demo user)
 	@curl -fsS -X POST "$(TOKEN_URL)" \
 	  -H 'Content-Type: application/x-www-form-urlencoded' \
 	  -d "grant_type=password" \
@@ -46,6 +52,13 @@ token: ## Dev smoke: password grant → access_token (kalke-cli only)
 	  -d "username=$(DEMO_USER)" \
 	  -d "password=$(DEMO_PASSWORD)" \
 	  -d "scope=openid profile email" | python3 -c 'import sys,json; print(json.load(sys.stdin)["access_token"])'
+
+m2m-token: ## M2M: client_credentials → access_token (pde-m2m)
+	@curl -fsS -X POST "$(TOKEN_URL)" \
+	  -H 'Content-Type: application/x-www-form-urlencoded' \
+	  -d "grant_type=client_credentials" \
+	  -d "client_id=$(M2M_ID)" \
+	  -d "client_secret=$(M2M_SECRET)" | python3 -c 'import sys,json; print(json.load(sys.stdin)["access_token"])'
 
 open-admin: ## Print admin console URL
 	@echo "http://localhost:$(PUBLIC_PORT)/admin/"

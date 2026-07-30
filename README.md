@@ -11,7 +11,7 @@ Under the hood (internal Docker network only):
 3. **Caddy** — public reverse proxy (issuer façade + TLS-ready later)
 
 ```text
-App / SPA  ──OIDC──►  Caddy (:8443)  ──►  Keycloak  ──►  Postgres
+App / SPA / M2M  ──OIDC──►  Caddy (:8443)  ──►  Keycloak  ──►  Postgres
 ```
 
 ## Quick start
@@ -19,7 +19,9 @@ App / SPA  ──OIDC──►  Caddy (:8443)  ──►  Keycloak  ──►  P
 ```bash
 cp .env.example .env
 make up
-make jwks    # must succeed via the proxy
+make jwks       # must succeed via the proxy
+make token      # human (demo user) access token
+make m2m-token  # machine client_credentials token
 ```
 
 | Value | Default |
@@ -28,7 +30,17 @@ make jwks    # must succeed via the proxy
 | JWKS | `{issuer}/protocol/openid-connect/certs` |
 | Audience (API) | `personal-document-extractor` |
 | Demo user | `demo@kalke.local` / `DemoPass123!` |
+| M2M client | `pde-m2m` / `pde-m2m-dev-secret` |
 | Admin UI | `http://localhost:8443/admin/` (loopback only) |
+
+### Re-importing the realm
+
+Keycloak import uses `IGNORE_EXISTING`. After changing `keycloak/kalke-realm.json`, wipe the volume so the realm is recreated:
+
+```bash
+make destroy
+make up
+```
 
 ## Wire an app (OIDC only)
 
@@ -49,38 +61,48 @@ The app validates JWTs locally with JWKS. No per-request call to this stack is r
 |---|---|---|
 | `personal-document-extractor` | bearer-only | API **audience** |
 | `kalke-spa` | public + PKCE | Future website |
-| `kalke-cli` | confidential + password grant | **Dev smoke only** |
+| `kalke-cli` | confidential + password grant | **Dev human smoke only** |
+| `pde-m2m` | confidential + service account | **M2M** (`client_credentials`) |
 
 Realm roles (mapped into access-token claim `permissions`):
 
 - `extract:write`
-- `keys:manage`
 - `admin`
 
-## Dev token (smoke)
+## Tokens
+
+**Human (dev):**
 
 ```bash
 TOKEN=$(make -s token)
 curl -sS http://localhost:8080/v1/me -H "Authorization: Bearer $TOKEN"
 ```
 
-Password grant exists only on `kalke-cli` for local testing. Production websites must use Authorization Code + PKCE (`kalke-spa`).
+**M2M:**
+
+```bash
+TOKEN=$(make -s m2m-token)
+curl -sS -X POST "http://localhost:8080/v1/extract?doc_type=identity_document" \
+  -H "Authorization: Bearer $TOKEN" \
+  -F "file=@./documento.pdf"
+```
+
+Password grant exists only on `kalke-cli` for local testing. Production websites must use Authorization Code + PKCE (`kalke-spa`). Machines use `pde-m2m` client credentials — not product-issued API keys.
 
 ## Make targets
 
 ```bash
 make help
-make up | down | logs | ps
+make up | down | destroy | logs | ps
 make jwks
 make token
+make m2m-token
 ```
 
 ## What this is / is not
 
-**Is:** IdP product boundary — reverse proxy + Keycloak + realm import.  
-**Is not:** a custom Go auth BFF, a password store for product APIs, or HA Keycloak.
-
-API keys (M2M) stay in each product API (e.g. `pde_live_…` in the extractor). This repo covers **human** OIDC login.
+**Is:** IdP product boundary — reverse proxy + Keycloak + realm import for human and M2M OIDC.  
+**Is not:** a custom Go auth BFF, a password store inside product APIs, or HA Keycloak.
 
 ## License
 
