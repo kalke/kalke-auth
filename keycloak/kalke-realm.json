@@ -16,10 +16,6 @@
         "description": "Create document extractions"
       },
       {
-        "name": "keys:manage",
-        "description": "Manage own API keys"
-      },
-      {
         "name": "admin",
         "description": "Full access (wildcard)"
       }
@@ -40,7 +36,13 @@
           "temporary": false
         }
       ],
-      "realmRoles": ["extract:write", "keys:manage"]
+      "realmRoles": ["extract:write"]
+    },
+    {
+      "username": "service-account-pde-m2m",
+      "enabled": true,
+      "serviceAccountClientId": "pde-m2m",
+      "realmRoles": ["extract:write"]
     }
   ],
   "clients": [
@@ -220,6 +222,46 @@
           "consentRequired": false,
           "config": {
             "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "pde-m2m",
+      "name": "PDE machine-to-machine",
+      "description": "Client credentials for curl/CI/SDK (no proprietary API keys)",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "pde-m2m-dev-secret",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "protocol": "openid-connect",
+      "fullScopeAllowed": true,
+      "protocolMappers": [
+        {
+          "name": "audience-pde",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "personal-document-extractor",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "permissions",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "permissions",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "id.token.claim": "false",
             "access.token.claim": "true",
             "userinfo.token.claim": "true"
           }
