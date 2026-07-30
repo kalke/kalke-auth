@@ -1,0 +1,230 @@
+{
+  "realm": "kalke",
+  "enabled": true,
+  "displayName": "Kalke",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "sslRequired": "external",
+  "roles": {
+    "realm": [
+      {
+        "name": "extract:write",
+        "description": "Create document extractions"
+      },
+      {
+        "name": "keys:manage",
+        "description": "Manage own API keys"
+      },
+      {
+        "name": "admin",
+        "description": "Full access (wildcard)"
+      }
+    ]
+  },
+  "users": [
+    {
+      "username": "demo@kalke.local",
+      "email": "demo@kalke.local",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Demo",
+      "lastName": "Kalke",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "DemoPass123!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["extract:write", "keys:manage"]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "personal-document-extractor",
+      "name": "Personal Document Extractor API",
+      "description": "Resource API audience for access tokens",
+      "enabled": true,
+      "publicClient": false,
+      "bearerOnly": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "protocol": "openid-connect",
+      "fullScopeAllowed": true
+    },
+    {
+      "clientId": "kalke-spa",
+      "name": "Kalke SPA (future website)",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "protocol": "openid-connect",
+      "rootUrl": "http://localhost:3000",
+      "baseUrl": "http://localhost:3000",
+      "redirectUris": [
+        "http://localhost:3000/*",
+        "http://127.0.0.1:3000/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:3000/*##http://127.0.0.1:3000/*"
+      },
+      "fullScopeAllowed": true,
+      "protocolMappers": [
+        {
+          "name": "audience-pde",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "personal-document-extractor",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "permissions",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "permissions",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "email",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "email",
+            "claim.name": "email",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "email verified",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "emailVerified",
+            "claim.name": "email_verified",
+            "jsonType.label": "boolean",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "name",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-full-name-mapper",
+          "consentRequired": false,
+          "config": {
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "kalke-cli",
+      "name": "Kalke CLI / smoke (dev)",
+      "description": "Confidential client with password grant for local smoke tests only",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "kalke-cli-dev-secret",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "protocol": "openid-connect",
+      "fullScopeAllowed": true,
+      "protocolMappers": [
+        {
+          "name": "audience-pde",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "personal-document-extractor",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "permissions",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "permissions",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "email",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "email",
+            "claim.name": "email",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "email verified",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "emailVerified",
+            "claim.name": "email_verified",
+            "jsonType.label": "boolean",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "name",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-full-name-mapper",
+          "consentRequired": false,
+          "config": {
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ]
+}
