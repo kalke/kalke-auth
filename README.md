@@ -4,14 +4,17 @@ Encapsulated **OIDC Identity Provider** for Kalke apps.
 
 Apps (including [personal-document-extractor](../personal-document-extractor)) talk only to a stable OIDC issuer. They do **not** configure Keycloak-specific URLs, admin APIs, or themes.
 
-Under the hood (internal Docker network only):
+Under the hood (Docker network `kalke-auth`):
 
-1. **Postgres** — Keycloak database  
-2. **Keycloak** — IdP implementation (not published)  
-3. **Caddy** — public reverse proxy (issuer façade + TLS-ready later)
+1. **kc-db** — Keycloak database (service name is *not* `postgres`, to avoid DNS clashes with other stacks)  
+2. **Keycloak** — IdP implementation (not published on the host)  
+3. **Caddy** — public reverse proxy (issuer façade)
 
 ```text
-App / SPA / M2M  ──OIDC──►  Caddy (:8443)  ──►  Keycloak  ──►  Postgres
+App / SPA / M2M  ──OIDC──►  Caddy (:8443 on host)  ──►  Keycloak  ──►  kc-db
+
+Docker consumers on network kalke-auth reach JWKS via http://caddy:8443
+while JWT iss stays http://localhost:8443/realms/kalke
 ```
 
 ## Quick start
@@ -32,6 +35,7 @@ make m2m-token  # machine client_credentials token
 | Demo user | `demo@kalke.local` / `DemoPass123!` |
 | M2M client | `pde-m2m` / `pde-m2m-dev-secret` |
 | Admin UI | `http://localhost:8443/admin/` (loopback only) |
+| Docker network | `kalke-auth` |
 
 ### Re-importing the realm
 
@@ -44,16 +48,22 @@ make up
 
 ## Wire an app (OIDC only)
 
+**Host / Postman clients:**
+
 ```bash
 OIDC_ISSUER=http://localhost:8443/realms/kalke
 OIDC_AUDIENCE=personal-document-extractor
 ```
 
-The app validates JWTs locally with JWKS. No per-request call to this stack is required after keys are cached.
+**App container on network `kalke-auth`:**
 
-### Consumers in Docker (WSL / Desktop)
+```bash
+OIDC_ISSUER=http://localhost:8443/realms/kalke          # must match JWT iss
+OIDC_DISCOVERY_URL=http://caddy:8443/realms/kalke       # reachable JWKS/discovery
+OIDC_AUDIENCE=personal-document-extractor
+```
 
-`localhost` inside a container is not the host. Prefer running the API on the host for JWT smoke, **or** set the same reachable issuer on both sides (e.g. `host.docker.internal`) and align `KC_HOSTNAME` + `OIDC_ISSUER`.
+The app validates JWTs locally with JWKS. Env vars for this IdP DB are namespaced (`KC_DB_USER`, …) so they do not collide with product `POSTGRES_*` variables.
 
 ## Clients in realm `kalke`
 
@@ -75,7 +85,6 @@ Realm roles (mapped into access-token claim `permissions`):
 
 ```bash
 TOKEN=$(make -s token)
-curl -sS http://localhost:8080/v1/me -H "Authorization: Bearer $TOKEN"
 ```
 
 **M2M:**

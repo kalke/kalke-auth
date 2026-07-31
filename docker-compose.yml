@@ -1,34 +1,34 @@
 services:
-  postgres:
+  # Named kc-db so DNS never collides with other stacks' "postgres" on shared networks.
+  kc-db:
     image: postgres:18-alpine
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-keycloak}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-keycloak}
-      POSTGRES_DB: ${POSTGRES_DB:-keycloak}
+      POSTGRES_USER: ${KC_DB_USER:-keycloak}
+      POSTGRES_PASSWORD: ${KC_DB_PASSWORD:-keycloak}
+      POSTGRES_DB: ${KC_DB_NAME:-keycloak}
     volumes:
       - kc_pgdata:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 5s
       timeout: 3s
       retries: 15
     networks:
-      - internal
+      - kalke-auth
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.3
     command: ["start-dev", "--import-realm"]
     depends_on:
-      postgres:
+      kc-db:
         condition: service_healthy
     environment:
       KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-keycloak}
-      KC_DB_USERNAME: ${POSTGRES_USER:-keycloak}
-      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-keycloak}
+      KC_DB_URL: jdbc:postgresql://kc-db:5432/${KC_DB_NAME:-keycloak}
+      KC_DB_USERNAME: ${KC_DB_USER:-keycloak}
+      KC_DB_PASSWORD: ${KC_DB_PASSWORD:-keycloak}
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_ADMIN_USER:-admin}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD:-admin}
-      # Public issuer must match what apps put in OIDC_ISSUER (via Caddy).
       KC_HOSTNAME: ${KC_HOSTNAME:-http://localhost:8443}
       KC_HOSTNAME_STRICT: "false"
       KC_HTTP_ENABLED: "true"
@@ -36,11 +36,9 @@ services:
       KC_HEALTH_ENABLED: "true"
     volumes:
       - ./keycloak:/opt/keycloak/data/import:ro
-    # No published ports — only reachable through Caddy on the Docker network.
     networks:
-      - internal
+      - kalke-auth
     healthcheck:
-      # Management interface (KC_HEALTH_ENABLED); start-dev may take a minute on first boot.
       test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000"]
       interval: 10s
       timeout: 5s
@@ -57,11 +55,12 @@ services:
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
     networks:
-      - internal
+      - kalke-auth
 
 volumes:
   kc_pgdata:
 
 networks:
-  internal:
+  kalke-auth:
+    name: kalke-auth
     driver: bridge
