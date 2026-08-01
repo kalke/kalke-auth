@@ -1,4 +1,4 @@
-.PHONY: help up down destroy logs restart ps token m2m-token jwks open-admin
+.PHONY: help up down destroy logs restart ps token m2m-token ebank-m2m-token jwks open-admin validate
 
 COMPOSE ?= docker compose
 PUBLIC_PORT ?= 8443
@@ -12,6 +12,8 @@ CLI_ID ?= kalke-cli
 CLI_SECRET ?= kalke-cli-dev-secret
 M2M_ID ?= pde-m2m
 M2M_SECRET ?= pde-m2m-dev-secret
+EBANK_M2M_ID ?= ebank-m2m
+EBANK_M2M_SECRET ?= ebank-m2m-dev-secret
 
 help: ## Show targets
 	@grep -E '^[a-zA-Z_-]+:.*?##' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?##"}; {printf "  %-14s %s\n", $$1, $$2}'
@@ -59,6 +61,16 @@ m2m-token: ## M2M: client_credentials → access_token (pde-m2m)
 	  -d "grant_type=client_credentials" \
 	  -d "client_id=$(M2M_ID)" \
 	  -d "client_secret=$(M2M_SECRET)" | python3 -c 'import sys,json; print(json.load(sys.stdin)["access_token"])'
+
+ebank-m2m-token: ## M2M: client_credentials → access_token (ebank-m2m)
+	@curl -fsS -X POST "$(TOKEN_URL)" \
+	  -H 'Content-Type: application/x-www-form-urlencoded' \
+	  -d "grant_type=client_credentials" \
+	  -d "client_id=$(EBANK_M2M_ID)" \
+	  -d "client_secret=$(EBANK_M2M_SECRET)" | python3 -c 'import sys,json; print(json.load(sys.stdin)["access_token"])'
+
+validate: ## Validate realm JSON (same as CI)
+	node scripts/validate-realm.mjs
 
 open-admin: ## Print admin console URL
 	@echo "http://localhost:$(PUBLIC_PORT)/admin/"

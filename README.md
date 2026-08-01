@@ -2,13 +2,15 @@
 
 Encapsulated **OIDC Identity Provider** for Kalke apps.
 
-Apps (including [personal-document-extractor](../personal-document-extractor)) talk only to a stable OIDC issuer. They do **not** configure Keycloak-specific URLs, admin APIs, or themes.
+Apps ([personal-document-extractor](https://github.com/kalke/personal-document-extractor), [e-bank-api](https://github.com/kalke/e-bank-api), [kalke.dev sandbox](https://github.com/kalke/kalke)) talk only to a stable OIDC issuer. They do **not** configure Keycloak-specific URLs, admin APIs, or themes.
 
 Under the hood (Docker network `kalke-auth`):
 
 1. **kc-db** — Keycloak database (service name is *not* `postgres`, to avoid DNS clashes with other stacks)  
 2. **Keycloak** — IdP implementation (not published on the host)  
 3. **Caddy** — public reverse proxy (issuer façade)
+
+Production: Cloudflare Containers on **`auth.kalke.dev`** with Neon Postgres — see [DEPLOY.md](DEPLOY.md).
 
 ```text
 App / SPA / M2M  ──OIDC──►  Caddy (:8443 on host)  ──►  Keycloak  ──►  kc-db
@@ -24,16 +26,19 @@ cp .env.example .env
 make up
 make jwks       # must succeed via the proxy
 make token      # human (demo user) access token
-make m2m-token  # machine client_credentials token
+make m2m-token  # PDE machine client_credentials token
+make ebank-m2m-token
 ```
 
 | Value | Default |
 |---|---|
-| Issuer | `http://localhost:8443/realms/kalke` |
+| Issuer (local) | `http://localhost:8443/realms/kalke` |
+| Issuer (prod) | `https://auth.kalke.dev/realms/kalke` |
 | JWKS | `{issuer}/protocol/openid-connect/certs` |
-| Audience (API) | `personal-document-extractor` |
+| Audiences | `personal-document-extractor`, `e-bank-api` |
 | Demo user | `demo@kalke.local` / `DemoPass123!` |
-| M2M client | `pde-m2m` / `pde-m2m-dev-secret` |
+| M2M (PDE) | `pde-m2m` / `pde-m2m-dev-secret` |
+| M2M (e-bank) | `ebank-m2m` / `ebank-m2m-dev-secret` |
 | Admin UI | `http://localhost:8443/admin/` (loopback only) |
 | Docker network | `kalke-auth` |
 
@@ -52,7 +57,7 @@ make up
 
 ```bash
 OIDC_ISSUER=http://localhost:8443/realms/kalke
-OIDC_AUDIENCE=personal-document-extractor
+OIDC_AUDIENCE=personal-document-extractor   # or e-bank-api
 ```
 
 **App container on network `kalke-auth`:**
@@ -60,7 +65,7 @@ OIDC_AUDIENCE=personal-document-extractor
 ```bash
 OIDC_ISSUER=http://localhost:8443/realms/kalke          # must match JWT iss
 OIDC_DISCOVERY_URL=http://caddy:8443/realms/kalke       # reachable JWKS/discovery
-OIDC_AUDIENCE=personal-document-extractor
+OIDC_AUDIENCE=personal-document-extractor               # or e-bank-api
 ```
 
 The app validates JWTs locally with JWKS. Env vars for this IdP DB are namespaced (`KC_DB_USER`, …) so they do not collide with product `POSTGRES_*` variables.
@@ -69,14 +74,17 @@ The app validates JWTs locally with JWKS. Env vars for this IdP DB are namespace
 
 | Client | Type | Purpose |
 |---|---|---|
-| `personal-document-extractor` | bearer-only | API **audience** |
-| `kalke-spa` | public + PKCE | Future website |
+| `personal-document-extractor` | bearer-only | PDE API **audience** |
+| `e-bank-api` | bearer-only | E-Bank API **audience** |
+| `kalke-spa` | public + PKCE | kalke.dev sandbox (+ local Vite) |
 | `kalke-cli` | confidential + password grant | **Dev human smoke only** |
-| `pde-m2m` | confidential + service account | **M2M** (`client_credentials`) |
+| `pde-m2m` | confidential + service account | PDE **M2M** |
+| `ebank-m2m` | confidential + service account | E-Bank **M2M** |
 
 Realm roles (mapped into access-token claim `permissions`):
 
 - `extract:write`
+- `bank:write`
 - `admin`
 
 ## Tokens
@@ -96,7 +104,7 @@ curl -sS -X POST "http://localhost:8080/v1/extract?doc_type=identity_document" \
   -F "file=@./documento.pdf"
 ```
 
-Password grant exists only on `kalke-cli` for local testing. Production websites must use Authorization Code + PKCE (`kalke-spa`). Machines use `pde-m2m` client credentials — not product-issued API keys.
+Password grant exists only on `kalke-cli` for local testing. Production websites must use Authorization Code + PKCE (`kalke-spa`). Machines use `pde-m2m` / `ebank-m2m` client credentials — not product-issued API keys.
 
 ## Make targets
 
@@ -106,7 +114,12 @@ make up | down | destroy | logs | ps
 make jwks
 make token
 make m2m-token
+make ebank-m2m-token
 ```
+
+## Cloudflare deploy
+
+See [DEPLOY.md](DEPLOY.md). CI on `main` validates the realm JSON, builds the Keycloak image, and deploys the Worker + Container.
 
 ## What this is / is not
 
