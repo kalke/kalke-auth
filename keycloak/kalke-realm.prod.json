@@ -27,32 +27,20 @@
   },
   "users": [
     {
-      "username": "demo@kalke.local",
-      "email": "demo@kalke.local",
-      "emailVerified": true,
-      "enabled": true,
-      "firstName": "Demo",
-      "lastName": "Kalke",
-      "credentials": [
-        {
-          "type": "password",
-          "value": "DemoPass123!",
-          "temporary": false
-        }
-      ],
-      "realmRoles": ["extract:write", "bank:write"]
-    },
-    {
       "username": "service-account-pde-m2m",
       "enabled": true,
       "serviceAccountClientId": "pde-m2m",
-      "realmRoles": ["extract:write"]
+      "realmRoles": [
+        "extract:write"
+      ]
     },
     {
       "username": "service-account-ebank-m2m",
       "enabled": true,
       "serviceAccountClientId": "ebank-m2m",
-      "realmRoles": ["bank:write"]
+      "realmRoles": [
+        "bank:write"
+      ]
     }
   ],
   "clients": [
@@ -84,7 +72,7 @@
     },
     {
       "clientId": "kalke-spa",
-      "name": "Kalke website / sandbox SPA",
+      "name": "Kalke website / sandbox SPA (production)",
       "enabled": true,
       "publicClient": true,
       "standardFlowEnabled": true,
@@ -94,114 +82,19 @@
       "rootUrl": "https://kalke.dev",
       "baseUrl": "https://kalke.dev",
       "redirectUris": [
-        "https://kalke.dev/*",
-        "https://www.kalke.dev/*",
-        "http://localhost:5173/*",
-        "http://127.0.0.1:5173/*",
-        "http://localhost:3000/*",
-        "http://127.0.0.1:3000/*"
+        "https://kalke.dev/",
+        "https://www.kalke.dev/",
+        "https://kalke.dev/sandbox",
+        "https://www.kalke.dev/sandbox"
       ],
       "webOrigins": [
         "https://kalke.dev",
-        "https://www.kalke.dev",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000"
+        "https://www.kalke.dev"
       ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "https://kalke.dev/*##https://www.kalke.dev/*##http://localhost:5173/*##http://127.0.0.1:5173/*##http://localhost:3000/*##http://127.0.0.1:3000/*"
+        "post.logout.redirect.uris": "https://kalke.dev/##https://www.kalke.dev/"
       },
-      "fullScopeAllowed": true,
-      "protocolMappers": [
-        {
-          "name": "audience-pde",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-audience-mapper",
-          "consentRequired": false,
-          "config": {
-            "included.client.audience": "personal-document-extractor",
-            "id.token.claim": "false",
-            "access.token.claim": "true"
-          }
-        },
-        {
-          "name": "audience-ebank",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-audience-mapper",
-          "consentRequired": false,
-          "config": {
-            "included.client.audience": "e-bank-api",
-            "id.token.claim": "false",
-            "access.token.claim": "true"
-          }
-        },
-        {
-          "name": "permissions",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-usermodel-realm-role-mapper",
-          "consentRequired": false,
-          "config": {
-            "claim.name": "permissions",
-            "jsonType.label": "String",
-            "multivalued": "true",
-            "id.token.claim": "false",
-            "access.token.claim": "true",
-            "userinfo.token.claim": "true"
-          }
-        },
-        {
-          "name": "email",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-usermodel-property-mapper",
-          "consentRequired": false,
-          "config": {
-            "user.attribute": "email",
-            "claim.name": "email",
-            "jsonType.label": "String",
-            "id.token.claim": "true",
-            "access.token.claim": "true",
-            "userinfo.token.claim": "true"
-          }
-        },
-        {
-          "name": "email verified",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-usermodel-property-mapper",
-          "consentRequired": false,
-          "config": {
-            "user.attribute": "emailVerified",
-            "claim.name": "email_verified",
-            "jsonType.label": "boolean",
-            "id.token.claim": "true",
-            "access.token.claim": "true",
-            "userinfo.token.claim": "true"
-          }
-        },
-        {
-          "name": "name",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-full-name-mapper",
-          "consentRequired": false,
-          "config": {
-            "id.token.claim": "true",
-            "access.token.claim": "true",
-            "userinfo.token.claim": "true"
-          }
-        }
-      ]
-    },
-    {
-      "clientId": "kalke-cli",
-      "name": "Kalke CLI / smoke (dev)",
-      "description": "Confidential client with password grant for local smoke tests only",
-      "enabled": true,
-      "publicClient": false,
-      "secret": "kalke-cli-dev-secret",
-      "standardFlowEnabled": false,
-      "directAccessGrantsEnabled": true,
-      "protocol": "openid-connect",
       "fullScopeAllowed": true,
       "protocolMappers": [
         {
@@ -287,7 +180,6 @@
       "description": "Client credentials for curl/CI/SDK (no proprietary API keys)",
       "enabled": true,
       "publicClient": false,
-      "secret": "pde-m2m-dev-secret",
       "standardFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": true,
@@ -327,7 +219,6 @@
       "description": "Client credentials for e-bank-api curl/CI/SDK",
       "enabled": true,
       "publicClient": false,
-      "secret": "ebank-m2m-dev-secret",
       "standardFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": true,
