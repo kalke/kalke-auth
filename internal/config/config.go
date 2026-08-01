@@ -11,6 +11,7 @@ import (
 type Config struct {
 	HTTPAddr           string
 	DatabaseURL        string
+	DBSearchPath       string
 	RedisAddr          string
 	RedisPassword      string
 	RedisTLS           bool
@@ -55,6 +56,7 @@ func Load() (Config, error) {
 	return Config{
 		HTTPAddr:           getenv("HTTP_ADDR", ":8080"),
 		DatabaseURL:        dbURL,
+		DBSearchPath:       getenv("DB_SEARCH_PATH", "app"),
 		RedisAddr:          getenv("REDIS_ADDR", "localhost:6379"),
 		RedisPassword:      os.Getenv("REDIS_PASSWORD"),
 		RedisTLS:           parseBool(os.Getenv("REDIS_TLS"), true),

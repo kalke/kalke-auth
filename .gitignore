@@ -9,3 +9,7 @@ dist/
 .vscode/
 *.swp
 .DS_Store
+
+# local production env (never commit)
+prod.env
+.env.prod

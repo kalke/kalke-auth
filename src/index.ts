@@ -44,6 +44,7 @@ function containerEnvVars(env: Env): Record<string, string> {
 		KC_INTERNAL_URL: "http://127.0.0.1:8081",
 		KC_PUBLIC_ISSUER: "https://auth.kalke.dev/realms/kalke",
 		DATABASE_URL: env.DATABASE_URL,
+		DB_SEARCH_PATH: "app",
 		REDIS_ADDR: env.REDIS_ADDR,
 		REDIS_PASSWORD: env.REDIS_PASSWORD || "",
 		REDIS_TLS: env.REDIS_TLS || "true",

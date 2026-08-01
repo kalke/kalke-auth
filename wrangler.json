@@ -18,6 +18,7 @@
 		"KC_PROXY_HEADERS": "xforwarded",
 		"KC_HEALTH_ENABLED": "true",
 		"REDIS_TLS": "true",
+		"DB_SEARCH_PATH": "app",
 		"KC_BFF_CLIENT_ID": "kalke-bff",
 		"CORS_ORIGINS": "https://kalke.dev,https://www.kalke.dev",
 		"COOKIE_DOMAIN": ".kalke.dev"

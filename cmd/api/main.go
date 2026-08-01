@@ -9,9 +9,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-
 	"github.com/kalke/kalke-auth/internal/config"
+	"github.com/kalke/kalke-auth/internal/db"
 	"github.com/kalke/kalke-auth/internal/httpapi"
 	"github.com/kalke/kalke-auth/internal/keycloak"
 	"github.com/kalke/kalke-auth/internal/migrate"
@@ -31,7 +30,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+	pool, err := db.Connect(ctx, cfg.DatabaseURL, cfg.DBSearchPath)
 	if err != nil {
 		log.Error("db", "err", err)
 		os.Exit(1)
