@@ -85,6 +85,7 @@ jobs:
             TOKEN_HASH_PEPPER
             INTROSPECT_SECRET
             KC_BFF_CLIENT_SECRET
+            SIGNUP_INVITE_CODE
         env:
           KC_DB_URL: ${{ secrets.KC_DB_URL }}
           KC_DB_USERNAME: ${{ secrets.KC_DB_USERNAME }}
@@ -98,3 +99,4 @@ jobs:
           TOKEN_HASH_PEPPER: ${{ secrets.TOKEN_HASH_PEPPER }}
           INTROSPECT_SECRET: ${{ secrets.INTROSPECT_SECRET }}
           KC_BFF_CLIENT_SECRET: ${{ secrets.KC_BFF_CLIENT_SECRET }}
+          SIGNUP_INVITE_CODE: ${{ secrets.SIGNUP_INVITE_CODE }}

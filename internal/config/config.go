@@ -9,23 +9,28 @@ import (
 )
 
 type Config struct {
-	HTTPAddr           string
-	DatabaseURL        string
-	DBSearchPath       string
-	RedisAddr          string
-	RedisPassword      string
-	RedisTLS           bool
-	SessionSecret      []byte
-	TokenPepper        []byte
-	IntrospectSecret   string
-	KCInternalURL      string
-	KCPublicIssuer     string
-	BFFClientID        string
-	BFFClientSecret    string
-	CORSOrigins        []string
-	CookieDomain       string
-	SessionTTL         time.Duration
-	LoginRatePerMinute int
+	HTTPAddr            string
+	DatabaseURL         string
+	DBSearchPath        string
+	RedisAddr           string
+	RedisPassword       string
+	RedisTLS            bool
+	SessionSecret       []byte
+	TokenPepper         []byte
+	IntrospectSecret    string
+	SignupInviteCode    string
+	KCInternalURL       string
+	KCPublicIssuer      string
+	BFFClientID         string
+	BFFClientSecret     string
+	KCAdminUser         string
+	KCAdminPassword     string
+	CORSOrigins         []string
+	CookieDomain        string
+	SessionTTL          time.Duration
+	LoginRatePerMinute  int
+	SignupRatePerMinute int
+	SignupRatePerHour   int
 }
 
 func Load() (Config, error) {
@@ -37,6 +42,14 @@ func Load() (Config, error) {
 	if err != nil || loginRate <= 0 {
 		return Config{}, fmt.Errorf("invalid LOGIN_RATE_PER_MINUTE")
 	}
+	signupRateMin, err := strconv.Atoi(getenv("SIGNUP_RATE_PER_MINUTE", "3"))
+	if err != nil || signupRateMin <= 0 {
+		return Config{}, fmt.Errorf("invalid SIGNUP_RATE_PER_MINUTE")
+	}
+	signupRateHour, err := strconv.Atoi(getenv("SIGNUP_RATE_PER_HOUR", "10"))
+	if err != nil || signupRateHour <= 0 {
+		return Config{}, fmt.Errorf("invalid SIGNUP_RATE_PER_HOUR")
+	}
 
 	sessionSecret := strings.TrimSpace(os.Getenv("SESSION_SECRET"))
 	tokenPepper := strings.TrimSpace(os.Getenv("TOKEN_HASH_PEPPER"))
@@ -44,8 +57,14 @@ func Load() (Config, error) {
 	dbURL := strings.TrimSpace(os.Getenv("DATABASE_URL"))
 	bffID := getenv("KC_BFF_CLIENT_ID", "kalke-bff")
 	bffSecret := strings.TrimSpace(os.Getenv("KC_BFF_CLIENT_SECRET"))
+	invite := strings.TrimSpace(os.Getenv("SIGNUP_INVITE_CODE"))
+	adminUser := strings.TrimSpace(os.Getenv("KC_BOOTSTRAP_ADMIN_USERNAME"))
+	adminPass := strings.TrimSpace(os.Getenv("KC_BOOTSTRAP_ADMIN_PASSWORD"))
 	if dbURL == "" || sessionSecret == "" || tokenPepper == "" || introspect == "" || bffSecret == "" {
 		return Config{}, fmt.Errorf("DATABASE_URL, SESSION_SECRET, TOKEN_HASH_PEPPER, INTROSPECT_SECRET, KC_BFF_CLIENT_SECRET are required")
+	}
+	if invite == "" || adminUser == "" || adminPass == "" {
+		return Config{}, fmt.Errorf("SIGNUP_INVITE_CODE, KC_BOOTSTRAP_ADMIN_USERNAME, KC_BOOTSTRAP_ADMIN_PASSWORD are required")
 	}
 
 	cors := parseCSV(os.Getenv("CORS_ORIGINS"))
@@ -54,23 +73,28 @@ func Load() (Config, error) {
 	}
 
 	return Config{
-		HTTPAddr:           getenv("HTTP_ADDR", ":8080"),
-		DatabaseURL:        dbURL,
-		DBSearchPath:       getenv("DB_SEARCH_PATH", "app"),
-		RedisAddr:          getenv("REDIS_ADDR", "localhost:6379"),
-		RedisPassword:      os.Getenv("REDIS_PASSWORD"),
-		RedisTLS:           parseBool(os.Getenv("REDIS_TLS"), true),
-		SessionSecret:      []byte(sessionSecret),
-		TokenPepper:        []byte(tokenPepper),
-		IntrospectSecret:   introspect,
-		KCInternalURL:      strings.TrimSuffix(getenv("KC_INTERNAL_URL", "http://127.0.0.1:8081"), "/"),
-		KCPublicIssuer:     strings.TrimSuffix(getenv("KC_PUBLIC_ISSUER", "https://auth.kalke.dev/realms/kalke"), "/"),
-		BFFClientID:        bffID,
-		BFFClientSecret:    bffSecret,
-		CORSOrigins:        cors,
-		CookieDomain:       getenv("COOKIE_DOMAIN", ".kalke.dev"),
-		SessionTTL:         sessionTTL,
-		LoginRatePerMinute: loginRate,
+		HTTPAddr:            getenv("HTTP_ADDR", ":8080"),
+		DatabaseURL:         dbURL,
+		DBSearchPath:        getenv("DB_SEARCH_PATH", "app"),
+		RedisAddr:           getenv("REDIS_ADDR", "localhost:6379"),
+		RedisPassword:       os.Getenv("REDIS_PASSWORD"),
+		RedisTLS:            parseBool(os.Getenv("REDIS_TLS"), true),
+		SessionSecret:       []byte(sessionSecret),
+		TokenPepper:         []byte(tokenPepper),
+		IntrospectSecret:    introspect,
+		SignupInviteCode:    invite,
+		KCInternalURL:       strings.TrimSuffix(getenv("KC_INTERNAL_URL", "http://127.0.0.1:8081"), "/"),
+		KCPublicIssuer:      strings.TrimSuffix(getenv("KC_PUBLIC_ISSUER", "https://auth.kalke.dev/realms/kalke"), "/"),
+		BFFClientID:         bffID,
+		BFFClientSecret:     bffSecret,
+		KCAdminUser:         adminUser,
+		KCAdminPassword:     adminPass,
+		CORSOrigins:         cors,
+		CookieDomain:        getenv("COOKIE_DOMAIN", ".kalke.dev"),
+		SessionTTL:          sessionTTL,
+		LoginRatePerMinute:  loginRate,
+		SignupRatePerMinute: signupRateMin,
+		SignupRatePerHour:   signupRateHour,
 	}, nil
 }
 

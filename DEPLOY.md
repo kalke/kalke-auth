@@ -10,5 +10,6 @@ Required GitHub Actions secret **names** (values are private; never commit them)
 - `DATABASE_URL`, `REDIS_ADDR`, `REDIS_PASSWORD`
 - `SESSION_SECRET`, `TOKEN_HASH_PEPPER`, `INTROSPECT_SECRET`
 - `KC_BFF_CLIENT_SECRET`
+- `SIGNUP_INVITE_CODE`
 
 Operational details for schemas, playground users, and secret generation live in private notes — not in this public repo.
