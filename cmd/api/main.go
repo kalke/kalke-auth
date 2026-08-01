@@ -46,7 +46,8 @@ func main() {
 	defer func() { _ = rdb.Close() }()
 
 	kc := keycloak.New(cfg.KCInternalURL, cfg.KCPublicIssuer, cfg.BFFClientID, cfg.BFFClientSecret)
-	srv := httpapi.New(cfg, store.New(pool), kc, rdb, log)
+	admin := keycloak.NewAdmin(cfg.KCInternalURL, cfg.KCAdminUser, cfg.KCAdminPassword)
+	srv := httpapi.New(cfg, store.New(pool), kc, admin, rdb, log)
 
 	httpServer := &http.Server{
 		Addr:              cfg.HTTPAddr,

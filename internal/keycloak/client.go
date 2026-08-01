@@ -72,7 +72,7 @@ func (c *Client) PasswordLogin(ctx context.Context, username, password string) (
 	if err != nil {
 		return UserInfo{}, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode != http.StatusOK {
 		return UserInfo{}, fmt.Errorf("keycloak login failed: %d", resp.StatusCode)
