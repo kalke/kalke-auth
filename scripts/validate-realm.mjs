@@ -38,6 +38,7 @@ function validateProd(realm) {
 		"personal-document-extractor",
 		"e-bank-api",
 		"kalke-spa",
+		"kalke-bff",
 		"pde-m2m",
 		"ebank-m2m",
 	]) {
@@ -48,17 +49,21 @@ function validateProd(realm) {
 	}
 	for (const c of realm.clients || []) {
 		if (c.secret) fail(`prod client ${c.clientId} must not embed a secret`);
-		if (c.directAccessGrantsEnabled) {
+		if (c.directAccessGrantsEnabled && c.clientId !== "kalke-bff") {
 			fail(`prod client ${c.clientId} must not enable direct access grants`);
 		}
+	}
+	const bff = (realm.clients || []).find((c) => c.clientId === "kalke-bff");
+	if (!bff?.directAccessGrantsEnabled || bff.publicClient) {
+		fail("prod kalke-bff must be confidential with direct access grants");
 	}
 	const spa = (realm.clients || []).find((c) => c.clientId === "kalke-spa");
 	const redirects = spa?.redirectUris || [];
 	if (redirects.some((u) => String(u).includes("localhost"))) {
 		fail("prod kalke-spa must not allow localhost redirects");
 	}
-	if (!redirects.some((u) => String(u).includes("kalke.dev"))) {
-		fail("prod kalke-spa missing kalke.dev redirect");
+	if (!redirects.some((u) => String(u).includes("/playground"))) {
+		fail("prod kalke-spa missing /playground redirect");
 	}
 	const users = realm.users || [];
 	for (const u of users) {

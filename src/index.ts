@@ -13,9 +13,20 @@ export interface Env {
 	KC_DB_PASSWORD: string;
 	KC_BOOTSTRAP_ADMIN_USERNAME: string;
 	KC_BOOTSTRAP_ADMIN_PASSWORD: string;
+	DATABASE_URL: string;
+	REDIS_ADDR: string;
+	REDIS_PASSWORD: string;
+	REDIS_TLS: string;
+	SESSION_SECRET: string;
+	TOKEN_HASH_PEPPER: string;
+	INTROSPECT_SECRET: string;
+	KC_BFF_CLIENT_ID: string;
+	KC_BFF_CLIENT_SECRET: string;
+	CORS_ORIGINS: string;
+	COOKIE_DOMAIN: string;
 }
 
-function keycloakEnvVars(env: Env): Record<string, string> {
+function containerEnvVars(env: Env): Record<string, string> {
 	return {
 		KC_DB: env.KC_DB || "postgres",
 		KC_DB_URL: env.KC_DB_URL,
@@ -28,48 +39,43 @@ function keycloakEnvVars(env: Env): Record<string, string> {
 		KC_HEALTH_ENABLED: env.KC_HEALTH_ENABLED || "true",
 		KC_BOOTSTRAP_ADMIN_USERNAME: env.KC_BOOTSTRAP_ADMIN_USERNAME || "admin",
 		KC_BOOTSTRAP_ADMIN_PASSWORD: env.KC_BOOTSTRAP_ADMIN_PASSWORD,
+		KC_HTTP_PORT: "8081",
+		HTTP_ADDR: ":8080",
+		KC_INTERNAL_URL: "http://127.0.0.1:8081",
+		KC_PUBLIC_ISSUER: "https://auth.kalke.dev/realms/kalke",
+		DATABASE_URL: env.DATABASE_URL,
+		DB_SEARCH_PATH: "app",
+		REDIS_ADDR: env.REDIS_ADDR,
+		REDIS_PASSWORD: env.REDIS_PASSWORD || "",
+		REDIS_TLS: env.REDIS_TLS || "true",
+		SESSION_SECRET: env.SESSION_SECRET,
+		TOKEN_HASH_PEPPER: env.TOKEN_HASH_PEPPER,
+		INTROSPECT_SECRET: env.INTROSPECT_SECRET,
+		KC_BFF_CLIENT_ID: env.KC_BFF_CLIENT_ID || "kalke-bff",
+		KC_BFF_CLIENT_SECRET: env.KC_BFF_CLIENT_SECRET,
+		CORS_ORIGINS: env.CORS_ORIGINS || "https://kalke.dev,https://www.kalke.dev",
+		COOKIE_DOMAIN: env.COOKIE_DOMAIN || ".kalke.dev",
 	};
-}
-
-/** Admin console and master realm stay off the public hostname. */
-function isBlockedPublicPath(pathname: string): boolean {
-	const p = pathname.toLowerCase();
-	return (
-		p === "/admin" ||
-		p.startsWith("/admin/") ||
-		p === "/realms/master" ||
-		p.startsWith("/realms/master/")
-	);
 }
 
 export class KeycloakContainer extends Container<Env> {
 	defaultPort = 8080;
-	// Keep the IdP warm enough for interactive sandbox login.
 	sleepAfter = "30m";
 
 	override onStart(): void {
-		this.envVars = keycloakEnvVars(this.env);
+		this.envVars = containerEnvVars(this.env);
 	}
 }
 
 export default {
 	async fetch(request: Request, env: Env): Promise<Response> {
-		const url = new URL(request.url);
-		if (url.pathname === "/api/health") {
-			return Response.json({ ok: true, service: "kalke-auth" });
-		}
-		if (isBlockedPublicPath(url.pathname)) {
-			return new Response("Not Found", { status: 404 });
-		}
-
 		const container = getContainer(env.KEYCLOAK, "primary");
 		await container.startAndWaitForPorts({
 			startOptions: {
-				envVars: keycloakEnvVars(env),
+				envVars: containerEnvVars(env),
 			},
 			cancellationOptions: {
-				// Keycloak cold start against Neon can take a while.
-				portReadyTimeoutMS: 180_000,
+				portReadyTimeoutMS: 240_000,
 			},
 		});
 		return container.fetch(request);

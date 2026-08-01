@@ -71,8 +71,61 @@
       "fullScopeAllowed": true
     },
     {
+      "clientId": "kalke-bff",
+      "name": "Kalke auth BFF (server-side)",
+      "description": "Confidential client used only by the Go API for password login. Secret set at container boot.",
+      "enabled": true,
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "protocol": "openid-connect",
+      "fullScopeAllowed": true,
+      "protocolMappers": [
+        {
+          "name": "audience-pde",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "personal-document-extractor",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "permissions",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "permissions",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "email",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "email",
+            "claim.name": "email",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
       "clientId": "kalke-spa",
-      "name": "Kalke website / sandbox SPA (production)",
+      "name": "Kalke website SPA (production)",
       "enabled": true,
       "publicClient": true,
       "standardFlowEnabled": true,
@@ -84,8 +137,8 @@
       "redirectUris": [
         "https://kalke.dev/",
         "https://www.kalke.dev/",
-        "https://kalke.dev/sandbox",
-        "https://www.kalke.dev/sandbox"
+        "https://kalke.dev/playground",
+        "https://www.kalke.dev/playground"
       ],
       "webOrigins": [
         "https://kalke.dev",
@@ -93,7 +146,7 @@
       ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "https://kalke.dev/##https://www.kalke.dev/"
+        "post.logout.redirect.uris": "https://kalke.dev/##https://www.kalke.dev/##https://kalke.dev/playground##https://www.kalke.dev/playground"
       },
       "fullScopeAllowed": true,
       "protocolMappers": [
