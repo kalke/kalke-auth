@@ -104,6 +104,10 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) signup(w http.ResponseWriter, r *http.Request) {
+	if !s.cfg.SignupEnabled {
+		http.NotFound(w, r)
+		return
+	}
 	ip := clientIP(r)
 	if !s.allowRate(r.Context(), "signup:"+ip, s.cfg.SignupRatePerMinute, time.Minute) ||
 		!s.allowRate(r.Context(), "signup-hour:"+ip, s.cfg.SignupRatePerHour, time.Hour) {
@@ -364,14 +368,13 @@ func (s *Server) oidcProxy(w http.ResponseWriter, r *http.Request) {
 }
 
 func isPublicOIDCPath(path string) bool {
+	// Only discovery + JWKS are public. Token/admin/theme/resources stay internal.
 	p := strings.ToLower(path)
 	switch {
 	case p == "/realms/kalke/.well-known/openid-configuration":
 		return true
 	case strings.HasPrefix(p, "/realms/kalke/protocol/openid-connect/certs"):
 		return true
-	case strings.HasPrefix(p, "/resources/"):
-		return true // Keycloak may reference theme assets from discovery pages; keep minimal
 	default:
 		return false
 	}
@@ -406,13 +409,14 @@ func (s *Server) principalFromRequest(r *http.Request) (sessionPrincipal, error)
 }
 
 func (s *Server) allowRate(ctx context.Context, key string, limit int, window time.Duration) bool {
+	// Fail closed: without Redis we refuse auth endpoints rather than unbounded traffic.
 	if s.rdb == nil || key == "" || limit <= 0 {
-		return true
+		return false
 	}
 	n, err := s.rdb.Incr(ctx, key).Result()
 	if err != nil {
 		s.log.Warn("redis rate limit", "err", err)
-		return true
+		return false
 	}
 	if n == 1 {
 		_ = s.rdb.Expire(ctx, key, window).Err()

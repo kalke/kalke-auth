@@ -18,6 +18,7 @@ type Config struct {
 	SessionSecret       []byte
 	TokenPepper         []byte
 	IntrospectSecret    string
+	SignupEnabled       bool
 	SignupInviteCode    string
 	KCInternalURL       string
 	KCPublicIssuer      string
@@ -57,14 +58,18 @@ func Load() (Config, error) {
 	dbURL := strings.TrimSpace(os.Getenv("DATABASE_URL"))
 	bffID := getenv("KC_BFF_CLIENT_ID", "kalke-bff")
 	bffSecret := strings.TrimSpace(os.Getenv("KC_BFF_CLIENT_SECRET"))
+	signupEnabled := parseBool(getenv("SIGNUP_ENABLED", "true"), true)
 	invite := strings.TrimSpace(os.Getenv("SIGNUP_INVITE_CODE"))
 	adminUser := strings.TrimSpace(os.Getenv("KC_BOOTSTRAP_ADMIN_USERNAME"))
 	adminPass := strings.TrimSpace(os.Getenv("KC_BOOTSTRAP_ADMIN_PASSWORD"))
 	if dbURL == "" || sessionSecret == "" || tokenPepper == "" || introspect == "" || bffSecret == "" {
 		return Config{}, fmt.Errorf("DATABASE_URL, SESSION_SECRET, TOKEN_HASH_PEPPER, INTROSPECT_SECRET, KC_BFF_CLIENT_SECRET are required")
 	}
-	if invite == "" || adminUser == "" || adminPass == "" {
-		return Config{}, fmt.Errorf("SIGNUP_INVITE_CODE, KC_BOOTSTRAP_ADMIN_USERNAME, KC_BOOTSTRAP_ADMIN_PASSWORD are required")
+	if adminUser == "" || adminPass == "" {
+		return Config{}, fmt.Errorf("KC_BOOTSTRAP_ADMIN_USERNAME, KC_BOOTSTRAP_ADMIN_PASSWORD are required")
+	}
+	if signupEnabled && invite == "" {
+		return Config{}, fmt.Errorf("SIGNUP_INVITE_CODE is required when SIGNUP_ENABLED=true")
 	}
 
 	cors := parseCSV(os.Getenv("CORS_ORIGINS"))
@@ -82,6 +87,7 @@ func Load() (Config, error) {
 		SessionSecret:       []byte(sessionSecret),
 		TokenPepper:         []byte(tokenPepper),
 		IntrospectSecret:    introspect,
+		SignupEnabled:       signupEnabled,
 		SignupInviteCode:    invite,
 		KCInternalURL:       strings.TrimSuffix(getenv("KC_INTERNAL_URL", "http://127.0.0.1:8081"), "/"),
 		KCPublicIssuer:      strings.TrimSuffix(getenv("KC_PUBLIC_ISSUER", "https://auth.kalke.dev/realms/kalke"), "/"),

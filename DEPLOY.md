@@ -10,6 +10,9 @@ Required GitHub Actions secret **names** (values are private; never commit them)
 - `DATABASE_URL`, `REDIS_ADDR`, `REDIS_PASSWORD`
 - `SESSION_SECRET`, `TOKEN_HASH_PEPPER`, `INTROSPECT_SECRET`
 - `KC_BFF_CLIENT_SECRET`
-- `SIGNUP_INVITE_CODE`
+- `SIGNUP_INVITE_CODE` (required while signup is enabled)
+
+Public OIDC surface is discovery + JWKS only. Login/signup are rate-limited fail-closed
+(Redis errors deny). Set wrangler var `SIGNUP_ENABLED=false` to disable signup entirely.
 
 Operational details for schemas, playground users, and secret generation live in private notes — not in this public repo.
