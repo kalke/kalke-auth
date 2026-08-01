@@ -57,12 +57,7 @@ Issuer after deploy: `https://auth.kalke.dev/realms/kalke`
 
 ## 5. Branch protection (owner)
 
-Settings → Branches → rule for `main`:
-
-- Require a pull request before merging
-- Require status checks: `Validate realm`, `Docker build`
-- Restrict who can push to matching branches → only `kalke`
-- Do not allow bypass (except yourself if needed)
+See [kalke BRANCH_PROTECTION.md](https://github.com/kalke/kalke/blob/main/BRANCH_PROTECTION.md). Required checks: `Validate realm`, `Docker build`. Restrict push to `kalke` only.
 
 ## Demo sandbox user
 
