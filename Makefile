@@ -6,6 +6,7 @@ ISSUER ?= http://localhost:$(PUBLIC_PORT)/realms/kalke
 TOKEN_URL ?= $(ISSUER)/protocol/openid-connect/token
 JWKS_URL ?= $(ISSUER)/protocol/openid-connect/certs
 
+# LOCAL COMPOSE ONLY — never reuse these values on auth.kalke.dev.
 DEMO_USER ?= demo@kalke.local
 DEMO_PASSWORD ?= DemoPass123!
 CLI_ID ?= kalke-cli

@@ -36,9 +36,8 @@ make ebank-m2m-token
 | Issuer (prod) | `https://auth.kalke.dev/realms/kalke` |
 | JWKS | `{issuer}/protocol/openid-connect/certs` |
 | Audiences | `personal-document-extractor`, `e-bank-api` |
-| Demo user | `demo@kalke.local` / `DemoPass123!` |
-| M2M (PDE) | `pde-m2m` / `pde-m2m-dev-secret` |
-| M2M (e-bank) | `ebank-m2m` / `ebank-m2m-dev-secret` |
+| Demo user (**local Compose only**) | see `.env.example` / Makefile — never reuse on `auth.kalke.dev` |
+| M2M (**local Compose only**) | Makefile defaults — production secrets are generated on import |
 | Admin UI | `http://localhost:8443/admin/` (loopback only) |
 | Docker network | `kalke-auth` |
 
