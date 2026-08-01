@@ -1,0 +1,43 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "kalke-auth",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-10-08",
+	"compatibility_flags": ["nodejs_compat"],
+	"observability": {
+		"enabled": true
+	},
+	"routes": [
+		{ "pattern": "auth.kalke.dev", "custom_domain": true }
+	],
+	"vars": {
+		"KC_HOSTNAME": "https://auth.kalke.dev",
+		"KC_DB": "postgres",
+		"KC_HTTP_ENABLED": "true",
+		"KC_HOSTNAME_STRICT": "false",
+		"KC_PROXY_HEADERS": "xforwarded",
+		"KC_HEALTH_ENABLED": "true"
+	},
+	"containers": [
+		{
+			"class_name": "KeycloakContainer",
+			"image": "./Dockerfile",
+			"max_instances": 2,
+			"instance_type": "standard-1"
+		}
+	],
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "KEYCLOAK",
+				"class_name": "KeycloakContainer"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["KeycloakContainer"]
+		}
+	]
+}
