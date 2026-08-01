@@ -59,9 +59,12 @@ Issuer after deploy: `https://auth.kalke.dev/realms/kalke`
 
 See [kalke BRANCH_PROTECTION.md](https://github.com/kalke/kalke/blob/main/BRANCH_PROTECTION.md). Required checks: `Validate realm`, `Docker build`. Restrict push to `kalke` only.
 
-## Demo sandbox user
+## Sandbox users (production)
 
-Imported from realm (change password after first shared use):
+The production realm import (`kalke-realm.prod.json`) does **not** ship demo passwords
+or M2M client secrets. After first boot:
 
-- `demo@kalke.local` / `DemoPass123!`
-- Roles: `extract:write`, `bank:write`
+1. Open Keycloak Admin via a private tunnel / Cloudflare Access (public `/admin` is blocked).
+2. Create sandbox users manually; assign only the roles you intend.
+3. Copy generated M2M client secrets into consumer app secret stores — never commit them.
+4. Do not reuse local Compose defaults (`DemoPass123!`, `*-dev-secret`) on `auth.kalke.dev`.

@@ -14,7 +14,7 @@
 		"KC_HOSTNAME": "https://auth.kalke.dev",
 		"KC_DB": "postgres",
 		"KC_HTTP_ENABLED": "true",
-		"KC_HOSTNAME_STRICT": "false",
+		"KC_HOSTNAME_STRICT": "true",
 		"KC_PROXY_HEADERS": "xforwarded",
 		"KC_HEALTH_ENABLED": "true"
 	},

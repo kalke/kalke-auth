@@ -23,12 +23,23 @@ function keycloakEnvVars(env: Env): Record<string, string> {
 		KC_DB_PASSWORD: env.KC_DB_PASSWORD,
 		KC_HOSTNAME: env.KC_HOSTNAME || "https://auth.kalke.dev",
 		KC_HTTP_ENABLED: env.KC_HTTP_ENABLED || "true",
-		KC_HOSTNAME_STRICT: env.KC_HOSTNAME_STRICT || "false",
+		KC_HOSTNAME_STRICT: env.KC_HOSTNAME_STRICT || "true",
 		KC_PROXY_HEADERS: env.KC_PROXY_HEADERS || "xforwarded",
 		KC_HEALTH_ENABLED: env.KC_HEALTH_ENABLED || "true",
 		KC_BOOTSTRAP_ADMIN_USERNAME: env.KC_BOOTSTRAP_ADMIN_USERNAME || "admin",
 		KC_BOOTSTRAP_ADMIN_PASSWORD: env.KC_BOOTSTRAP_ADMIN_PASSWORD,
 	};
+}
+
+/** Admin console and master realm stay off the public hostname. */
+function isBlockedPublicPath(pathname: string): boolean {
+	const p = pathname.toLowerCase();
+	return (
+		p === "/admin" ||
+		p.startsWith("/admin/") ||
+		p === "/realms/master" ||
+		p.startsWith("/realms/master/")
+	);
 }
 
 export class KeycloakContainer extends Container<Env> {
@@ -46,6 +57,9 @@ export default {
 		const url = new URL(request.url);
 		if (url.pathname === "/api/health") {
 			return Response.json({ ok: true, service: "kalke-auth" });
+		}
+		if (isBlockedPublicPath(url.pathname)) {
+			return new Response("Not Found", { status: 404 });
 		}
 
 		const container = getContainer(env.KEYCLOAK, "primary");
