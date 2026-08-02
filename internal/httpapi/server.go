@@ -19,20 +19,24 @@ import (
 
 	"github.com/kalke/kalke-auth/internal/config"
 	"github.com/kalke/kalke-auth/internal/keycloak"
+	"github.com/kalke/kalke-auth/internal/mail"
 	"github.com/kalke/kalke-auth/internal/security"
+	"github.com/kalke/kalke-auth/internal/signup"
 	"github.com/kalke/kalke-auth/internal/store"
 )
 
 const sessionCookie = "kalke_session"
 
 type Server struct {
-	cfg   config.Config
-	store *store.Store
-	kc    *keycloak.Client
-	admin *keycloak.AdminClient
-	rdb   *redis.Client
-	proxy *httputil.ReverseProxy
-	log   *slog.Logger
+	cfg     config.Config
+	store   *store.Store
+	kc      *keycloak.Client
+	admin   *keycloak.AdminClient
+	rdb     *redis.Client
+	pending *signup.Store
+	mailer  mail.Mailer
+	proxy   *httputil.ReverseProxy
+	log     *slog.Logger
 }
 
 type sessionPrincipal struct {
@@ -42,14 +46,27 @@ type sessionPrincipal struct {
 	Permissions []string
 }
 
-func New(cfg config.Config, st *store.Store, kc *keycloak.Client, admin *keycloak.AdminClient, rdb *redis.Client, log *slog.Logger) *Server {
+func New(cfg config.Config, st *store.Store, kc *keycloak.Client, admin *keycloak.AdminClient, rdb *redis.Client, mailer mail.Mailer, log *slog.Logger) *Server {
 	target, _ := url.Parse(cfg.KCInternalURL)
 	proxy := httputil.NewSingleHostReverseProxy(target)
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 		slog.Error("keycloak proxy", "err", err)
 		http.Error(w, "bad gateway", http.StatusBadGateway)
 	}
-	return &Server{cfg: cfg, store: st, kc: kc, admin: admin, rdb: rdb, proxy: proxy, log: log}
+	if mailer == nil {
+		mailer = mail.LogMailer{Log: log}
+	}
+	return &Server{
+		cfg:     cfg,
+		store:   st,
+		kc:      kc,
+		admin:   admin,
+		rdb:     rdb,
+		pending: signup.NewStore(rdb, cfg.TokenPepper),
+		mailer:  mailer,
+		proxy:   proxy,
+		log:     log,
+	}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -57,7 +74,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/health", s.health)
 	mux.HandleFunc("GET /health", s.health)
 	mux.HandleFunc("POST /v1/auth/login", s.login)
-	mux.HandleFunc("POST /v1/auth/signup", s.signup)
+	mux.HandleFunc("POST /v1/auth/signup", s.signupStart)
+	mux.HandleFunc("POST /v1/auth/signup/verify", s.signupVerify)
+	mux.HandleFunc("POST /v1/auth/signup/resend", s.signupResend)
 	mux.HandleFunc("POST /v1/auth/logout", s.logout)
 	mux.HandleFunc("GET /v1/auth/me", s.me)
 	mux.HandleFunc("POST /v1/tokens", s.createToken)
@@ -99,58 +118,6 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	if err := s.issueSession(w, r, user, body.Email); err != nil {
 		s.log.Error("create session", "err", err)
 		writeErr(w, http.StatusInternalServerError, "session error")
-		return
-	}
-}
-
-func (s *Server) signup(w http.ResponseWriter, r *http.Request) {
-	ip := clientIP(r)
-	if !s.allowRate(r.Context(), "signup:"+ip, s.cfg.SignupRatePerMinute, time.Minute) ||
-		!s.allowRate(r.Context(), "signup-hour:"+ip, s.cfg.SignupRatePerHour, time.Hour) {
-		writeErr(w, http.StatusTooManyRequests, "rate limit exceeded")
-		return
-	}
-	var body struct {
-		Email      string `json:"email"`
-		Password   string `json:"password"`
-		InviteCode string `json:"invite_code"`
-	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body); err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid body")
-		return
-	}
-	body.Email = strings.TrimSpace(strings.ToLower(body.Email))
-	body.InviteCode = strings.TrimSpace(body.InviteCode)
-	if body.Email == "" || body.Password == "" || body.InviteCode == "" {
-		writeErr(w, http.StatusBadRequest, "email, password and invite_code required")
-		return
-	}
-	if len(body.Password) < 10 {
-		writeErr(w, http.StatusBadRequest, "password too short")
-		return
-	}
-	if !secureCompare(body.InviteCode, s.cfg.SignupInviteCode) {
-		// same response shape as bad credentials — don't confirm code validity
-		writeErr(w, http.StatusUnauthorized, "invalid signup")
-		return
-	}
-	if _, err := s.admin.CreateUserWithRole(r.Context(), body.Email, body.Password, "extract:write"); err != nil {
-		if strings.Contains(err.Error(), "user exists") {
-			writeErr(w, http.StatusConflict, "user exists")
-			return
-		}
-		s.log.Error("signup", "err", err)
-		writeErr(w, http.StatusBadGateway, "signup failed")
-		return
-	}
-	user, err := s.kc.PasswordLogin(r.Context(), body.Email, body.Password)
-	if err != nil {
-		writeErr(w, http.StatusCreated, "account created; sign in")
-		return
-	}
-	if err := s.issueSession(w, r, user, body.Email); err != nil {
-		s.log.Error("signup session", "err", err)
-		writeJSON(w, http.StatusCreated, map[string]any{"ok": true, "email": body.Email})
 		return
 	}
 }

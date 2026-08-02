@@ -10,6 +10,14 @@ Required GitHub Actions secret **names** (values are private; never commit them)
 - `DATABASE_URL`, `REDIS_ADDR`, `REDIS_PASSWORD`
 - `SESSION_SECRET`, `TOKEN_HASH_PEPPER`, `INTROSPECT_SECRET`
 - `KC_BFF_CLIENT_SECRET`
-- `SIGNUP_INVITE_CODE`
+- `MAILGUN_API_KEY`, `MAILGUN_DOMAIN` (signup email OTP)
 
-Operational details for schemas, playground users, and secret generation live in private notes — not in this public repo.
+Signup flow (all in kalke-auth):
+
+1. `POST /v1/auth/signup` — `{ name, email, password }` → sends 6-digit code
+2. `POST /v1/auth/signup/verify` — `{ email, code }` → creates Keycloak user + session
+3. `POST /v1/auth/signup/resend` — `{ email }` — available after 2 minutes
+
+From header defaults to `kalke <noreply@kalke.dev>` (`MAIL_FROM` wrangler var).
+
+Operational details for schemas and secret generation live in private notes — not in this public repo.
