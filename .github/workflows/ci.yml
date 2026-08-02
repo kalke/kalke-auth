@@ -11,23 +11,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check:
-    name: Validate realm
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
       - run: npm ci
-      - run: npm run check
+      - name: Validate realm JSON
+        run: npm run check
+      - name: Go vet
+        run: go vet ./...
+      - name: Go fmt check
+        run: test -z "$(gofmt -l .)"
 
-  go:
-    name: Go test
+  test:
+    name: Test
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -40,7 +47,7 @@ jobs:
       - run: go build -o /tmp/api ./cmd/api
 
   security:
-    name: Security scanners
+    name: Security
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -52,7 +59,6 @@ jobs:
       - name: gosec
         uses: securego/gosec@master
         with:
-          # Fail on high/critical only; medium cookie/form heuristics are noisy here.
           args: -severity high ./...
       - name: govulncheck
         run: |
@@ -71,10 +77,10 @@ jobs:
           severity: CRITICAL,HIGH
           exit-code: "1"
 
-  docker:
-    name: Docker build
+  build:
+    name: Build
     runs-on: ubuntu-latest
-    needs: [check, go, security]
+    needs: [lint, test, security]
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v6
@@ -82,68 +88,18 @@ jobs:
       - run: docker build -t kalke-auth:ci .
 
   deploy:
-    name: Deploy to AWS EC2
-    needs: [check, go, security, docker]
+    name: Deploy
+    # Self-hosted on EC2 — GitHub-hosted SSH to :22 times out (security group).
+    runs-on: [self-hosted, linux, kalke-auth-ec2]
+    needs: [lint, test, security, build]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
     timeout-minutes: 45
-    permissions:
-      contents: read
     steps:
-      - name: Deploy over SSH
-        uses: appleboy/ssh-action@v1.2.2
-        with:
-          host: ${{ secrets.AWS_EC2_HOST }}
-          username: ${{ secrets.AWS_EC2_USER }}
-          key: ${{ secrets.AWS_EC2_SSH_KEY }}
-          port: 22
-          command_timeout: 40m
-          script_stop: true
-          envs: GH_TOKEN
-          script: |
-            set -euo pipefail
-            chmod +x "${HOME}/kalke-auth/deploy/remote-update.sh" 2>/dev/null || true
-            if [[ -x "${HOME}/kalke-auth/deploy/remote-update.sh" ]]; then
-              bash "${HOME}/kalke-auth/deploy/remote-update.sh"
-            else
-              # First deploy / before script lands on the host: bootstrap update inline.
-              REPO_DIR="${HOME}/kalke-auth"
-              if [[ ! -d "${REPO_DIR}/.git" ]]; then
-                git clone "https://x-access-token:${GH_TOKEN}@github.com/kalke/kalke-auth.git" "${REPO_DIR}"
-              fi
-              cd "${REPO_DIR}"
-              test -f prod.env
-              git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/kalke/kalke-auth.git"
-              git fetch --depth=1 origin main
-              git checkout -B main FETCH_HEAD
-              git remote set-url origin "https://github.com/kalke/kalke-auth.git"
-              make aws-up
-            fi
+      - name: Update and restart stack
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  # Optional: thin Cloudflare Worker proxy in front of the EC2 origin.
-  deploy-worker:
-    name: Deploy optional Worker proxy
-    needs: [deploy]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_CF_WORKER == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Deploy Worker proxy
-        uses: cloudflare/wrangler-action@v4
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          wranglerVersion: "4.88.0"
-          command: deploy
-          secrets: |
-            ORIGIN_URL
-        env:
-          ORIGIN_URL: ${{ secrets.ORIGIN_URL }}
+          REPO_DIR: /home/ubuntu/kalke-auth
+        run: |
+          set -euo pipefail
+          chmod +x "${REPO_DIR}/deploy/remote-update.sh"
+          bash "${REPO_DIR}/deploy/remote-update.sh"

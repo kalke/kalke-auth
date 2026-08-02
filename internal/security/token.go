@@ -12,10 +12,10 @@ import (
 )
 
 const (
-	PATPrefix     = "kalke_"
-	sessionBytes  = 32
+	PATPrefix      = "kalke_"
+	sessionBytes   = 32
 	patSecretBytes = 24
-	prefixBytes   = 6
+	prefixBytes    = 6
 )
 
 func RandomToken() (string, error) {

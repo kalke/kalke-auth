@@ -76,11 +76,11 @@ func (s *Server) signupStart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"ok":                    true,
-		"status":                "pending_verification",
-		"email":                 body.Email,
-		"resend_after_seconds":  int(signup.ResendCooldown.Seconds()),
-		"expires_in_seconds":    int(signup.OTPTTL.Seconds()),
+		"ok":                   true,
+		"status":               "pending_verification",
+		"email":                body.Email,
+		"resend_after_seconds": int(signup.ResendCooldown.Seconds()),
+		"expires_in_seconds":   int(signup.OTPTTL.Seconds()),
 	})
 }
 

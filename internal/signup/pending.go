@@ -18,7 +18,7 @@ import (
 const (
 	PendingTTL        = 30 * time.Minute
 	OTPTTL            = 15 * time.Minute
-	ResendCooldown     = 2 * time.Minute
+	ResendCooldown    = 2 * time.Minute
 	MaxVerifyAttempts = 5
 )
 

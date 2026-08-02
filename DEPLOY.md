@@ -43,39 +43,15 @@ make aws-up   # first manual boot
 
 ## CI/CD (automático)
 
-Depois do merge em `main`, cada push corre: Validate realm → Go test → Docker build → **Deploy to AWS EC2**.
+Push em `main`: **Lint → Test → Security → Build → Deploy**.
 
-### GitHub Actions secrets (kalke-auth)
-
-No teu PC (onde está o `.pem`):
-
-```bash
-# IP público / Elastic IP da instance
-gh secret set AWS_EC2_HOST -R kalke/kalke-auth -b '54.82.62.18'
-
-gh secret set AWS_EC2_USER -R kalke/kalke-auth -b 'ubuntu'
-
-# Conteúdo completo do .pem (incluindo -----BEGIN/END-----)
-gh secret set AWS_EC2_SSH_KEY -R kalke/kalke-auth < first.pem
-```
-
-Confere:
-
-```bash
-gh secret list -R kalke/kalke-auth
-# deve listar AWS_EC2_HOST, AWS_EC2_USER, AWS_EC2_SSH_KEY
-```
+Deploy corre num **self-hosted runner** na própria EC2 (`kalke-auth-ec2`). Runners do GitHub costumam tomar timeout em SSH:22.
 
 ### O que o deploy faz
 
-1. SSH na EC2 com a key do secret  
-2. `git fetch` de `main` (repo privado via `GITHUB_TOKEN`)  
+1. Runner local em `~/kalke-auth`
+2. `git fetch` de `main` (via `GITHUB_TOKEN`)
 3. `make aws-up` (rebuild + restart; **mantém** `prod.env`)
-
-### Security group
-
-Se o SSH da instance estiver só no “My IP”, o Actions **falha** (IP do runner muda).  
-Abre **TCP 22** para `0.0.0.0/0` (ou ao menos o range da AWS/GitHub — o mais simples é `0.0.0.0/0` + só key).
 
 ## Updates manuais (opcional)
 
