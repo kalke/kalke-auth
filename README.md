@@ -13,7 +13,7 @@ OIDC identity provider for Kalke apps, plus a small **Go API** that sits in fron
 | POST | `/v1/auth/login` | email + password → session cookie |
 | POST | `/v1/auth/signup` (+ `/verify`, `/resend`) | OTP signup |
 | GET | `/v1/auth/me` | current session |
-| POST | `/v1/auth/password` | `{current_password,new_password}` (session required; min 10 chars) |
+| POST | `/v1/auth/password` | `{current_password,new_password}` (session; ≥10 chars, letter + digit) |
 | POST | `/v1/auth/logout` | clear session |
 
 ## Local

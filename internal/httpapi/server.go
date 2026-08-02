@@ -204,8 +204,8 @@ func passwordChangeValidationError(current, next string) string {
 	if current == "" || next == "" {
 		return "current and new password required"
 	}
-	if len(next) < 10 {
-		return "password too short"
+	if msg := security.PasswordStrengthError(next); msg != "" {
+		return msg
 	}
 	if current == next {
 		return "new password must differ"

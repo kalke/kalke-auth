@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/kalke/kalke-auth/internal/mail"
+	"github.com/kalke/kalke-auth/internal/security"
 	"github.com/kalke/kalke-auth/internal/signup"
 )
 
@@ -47,8 +48,8 @@ func (s *Server) signupStart(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid email")
 		return
 	}
-	if len(body.Password) < 10 {
-		writeErr(w, http.StatusBadRequest, "password too short")
+	if msg := security.PasswordStrengthError(body.Password); msg != "" {
+		writeErr(w, http.StatusBadRequest, msg)
 		return
 	}
 	// Owner/admin accounts are provisioned only in Keycloak.
