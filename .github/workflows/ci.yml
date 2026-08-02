@@ -49,23 +49,22 @@ jobs:
       - uses: docker/setup-buildx-action@v3
       - run: docker build -t kalke-auth:ci .
 
-  deploy:
-    name: Deploy to Cloudflare Containers
+  # Production auth runs on Oracle Always Free (see DEPLOY.md).
+  # Optional: deploy a thin Worker proxy if ORIGIN_URL is set.
+  deploy-worker:
+    name: Deploy optional Worker proxy
     needs: [check, go, docker]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_CF_WORKER == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-
       - run: npm ci
-
-      - name: Deploy Worker + Container
+      - name: Deploy Worker proxy
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -73,32 +72,6 @@ jobs:
           wranglerVersion: "4.88.0"
           command: deploy
           secrets: |
-            KC_DB_URL
-            KC_DB_USERNAME
-            KC_DB_PASSWORD
-            KC_BOOTSTRAP_ADMIN_USERNAME
-            KC_BOOTSTRAP_ADMIN_PASSWORD
-            DATABASE_URL
-            REDIS_ADDR
-            REDIS_PASSWORD
-            SESSION_SECRET
-            TOKEN_HASH_PEPPER
-            INTROSPECT_SECRET
-            KC_BFF_CLIENT_SECRET
-            MAILGUN_API_KEY
-            MAILGUN_DOMAIN
+            ORIGIN_URL
         env:
-          KC_DB_URL: ${{ secrets.KC_DB_URL }}
-          KC_DB_USERNAME: ${{ secrets.KC_DB_USERNAME }}
-          KC_DB_PASSWORD: ${{ secrets.KC_DB_PASSWORD }}
-          KC_BOOTSTRAP_ADMIN_USERNAME: ${{ secrets.KC_BOOTSTRAP_ADMIN_USERNAME }}
-          KC_BOOTSTRAP_ADMIN_PASSWORD: ${{ secrets.KC_BOOTSTRAP_ADMIN_PASSWORD }}
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          REDIS_ADDR: ${{ secrets.REDIS_ADDR }}
-          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
-          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
-          TOKEN_HASH_PEPPER: ${{ secrets.TOKEN_HASH_PEPPER }}
-          INTROSPECT_SECRET: ${{ secrets.INTROSPECT_SECRET }}
-          KC_BFF_CLIENT_SECRET: ${{ secrets.KC_BFF_CLIENT_SECRET }}
-          MAILGUN_API_KEY: ${{ secrets.MAILGUN_API_KEY }}
-          MAILGUN_DOMAIN: ${{ secrets.MAILGUN_DOMAIN }}
+          ORIGIN_URL: ${{ secrets.ORIGIN_URL }}

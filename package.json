@@ -8,9 +8,6 @@
 		"check": "node scripts/validate-realm.mjs",
 		"typecheck": "tsc --noEmit"
 	},
-	"dependencies": {
-		"@cloudflare/containers": "^0.0.30"
-	},
 	"devDependencies": {
 		"@cloudflare/workers-types": "^4.20250801.0",
 		"typescript": "^5.9.3",

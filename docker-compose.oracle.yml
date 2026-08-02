@@ -1,0 +1,52 @@
+# Production stack for Oracle Cloud Always Free (or any small VM).
+# Runs the all-in-one image (Keycloak + Go BFF) behind Caddy (TLS).
+#
+#   cp prod.env.example prod.env   # fill secrets
+#   docker compose -f docker-compose.oracle.yml --env-file prod.env up -d --build
+#
+services:
+  auth:
+    build: .
+    image: kalke-auth:oracle
+    restart: unless-stopped
+    env_file:
+      - prod.env
+    environment:
+      KC_HTTP_PORT: "8081"
+      HTTP_ADDR: ":8080"
+      KC_INTERNAL_URL: "http://127.0.0.1:8081"
+      KC_PUBLIC_ISSUER: "https://auth.kalke.dev/realms/kalke"
+      KC_HOSTNAME: "https://auth.kalke.dev"
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "true"
+      KC_PROXY_HEADERS: "xforwarded"
+      KC_HEALTH_ENABLED: "true"
+      DB_SEARCH_PATH: "app"
+      REDIS_TLS: "true"
+      COOKIE_DOMAIN: ".kalke.dev"
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080"]
+      interval: 15s
+      timeout: 5s
+      retries: 40
+      start_period: 180s
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    depends_on:
+      auth:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile.oracle:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

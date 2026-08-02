@@ -1,0 +1,12 @@
+{
+	email henriquekalke@icloud.com
+}
+
+auth.kalke.dev {
+	encode gzip
+	reverse_proxy auth:8080 {
+		header_up X-Forwarded-Proto https
+		header_up X-Forwarded-Host {host}
+		header_up X-Real-IP {remote_host}
+	}
+}

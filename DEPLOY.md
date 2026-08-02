@@ -1,30 +1,90 @@
 # Deploy
 
-Production deploy runs automatically on push to `main` (GitHub Actions → Cloudflare Containers).
+Production auth (**Keycloak + Go BFF**) runs on an **Oracle Cloud Always Free** VM.
+Cloudflare Containers are no longer required (avoids Workers Paid).
 
-Required GitHub Actions secret **names** (values are private; never commit them):
+## Oracle Always Free (recommended)
 
-- `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`
-- `KC_DB_URL`, `KC_DB_USERNAME`, `KC_DB_PASSWORD`
-- `KC_BOOTSTRAP_ADMIN_USERNAME`, `KC_BOOTSTRAP_ADMIN_PASSWORD`
-- `DATABASE_URL`, `REDIS_ADDR`, `REDIS_PASSWORD`
-- `SESSION_SECRET`, `TOKEN_HASH_PEPPER`, `INTROSPECT_SECRET`
-- `KC_BFF_CLIENT_SECRET`
-- `MAILGUN_API_KEY`, `MAILGUN_DOMAIN` (signup email OTP)
+### 1. Create the VM
 
-Signup flow (all in kalke-auth):
+In Oracle Cloud Console:
 
-1. `POST /v1/auth/signup` — `{ name, email, password }` → sends 6-digit code
-2. `POST /v1/auth/signup/verify` — `{ email, code }` → creates Keycloak user + session
-3. `POST /v1/auth/signup/resend` — `{ email }` — available after 2 minutes
+1. **Compute → Instances → Create**
+2. Image: **Ubuntu 22.04/24.04**
+3. Shape: **VM.Standard.A1.Flex** (Ampere ARM) — Always Free eligible  
+   Suggested: **2 OCPU / 12 GB RAM** (Keycloak is happier with ≥4 GB)
+4. Networking: assign a **public IPv4**
+5. **VCN security list / NSG**: ingress **22**, **80**, **443** from `0.0.0.0/0` (or lock SSH to your IP)
 
-From header defaults to `kalke <noreply@kalke.dev>` (`MAIL_FROM` wrangler var).
+### 2. Bootstrap the VM
 
-Public OIDC surface is discovery + JWKS only. Login/signup are rate-limited fail-closed
-(Redis errors deny). Set wrangler var `SIGNUP_ENABLED=false` to disable signup entirely.
+SSH in, then:
 
-Admin is email-allowlisted (`ADMIN_EMAILS`, default your owner email). Public signup creates
-users with **no** realm roles and cannot register an allowlisted admin email. Privileged
-permissions (`admin`, `bank:write`) are stripped from sessions/PATs unless the email matches.
+```bash
+git clone https://github.com/kalke/kalke-auth.git
+cd kalke-auth
+bash deploy/oracle-bootstrap.sh
+# log out/in once so your user is in the docker group
+```
 
-Operational details for schemas and secret generation live in private notes — not in this public repo.
+### 3. Secrets on the VM
+
+```bash
+cp prod.env.example prod.env
+nano prod.env   # fill from your private secrets notes
+```
+
+Critical:
+
+- `KC_DB_*` → Neon **direct** host + `currentSchema=keycloak`
+- `DATABASE_URL` → Neon **pooler** (app schema via `DB_SEARCH_PATH=app`)
+- Redis, session/pepper/introspect, `KC_BFF_CLIENT_SECRET`, Mailgun
+- `COOKIE_DOMAIN=.kalke.dev` (set in compose; keep consistent)
+
+### 4. Start
+
+```bash
+docker compose -f docker-compose.oracle.yml --env-file prod.env up -d --build
+docker compose -f docker-compose.oracle.yml logs -f
+```
+
+### 5. DNS
+
+Cloudflare DNS for `auth.kalke.dev`:
+
+- Type **A** → VM public IP  
+- Proxy status: **DNS only** (grey cloud) until Caddy issues the cert  
+- After HTTPS works you may enable the orange cloud if you want
+
+Smoke:
+
+```bash
+curl -fsS https://auth.kalke.dev/realms/kalke/.well-known/openid-configuration | head
+curl -fsS https://auth.kalke.dev/v1/health
+```
+
+### 6. Updates
+
+```bash
+cd ~/kalke-auth
+git pull
+docker compose -f docker-compose.oracle.yml --env-file prod.env up -d --build
+```
+
+## Optional Cloudflare Worker proxy
+
+Only if you want `auth.kalke.dev` on a Worker in front of the VM:
+
+1. Set GitHub secret `ORIGIN_URL` (e.g. `https://auth.kalke.dev` on the VM IP via hosts, or the VM URL)
+2. Set repo variable `DEPLOY_CF_WORKER=true`
+3. Keep `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID`
+
+Default CI **does not** deploy to Cloudflare.
+
+## Signup / lockdown (unchanged)
+
+1. `POST /v1/auth/signup` — `{ name, email, password }` → email OTP  
+2. `POST /v1/auth/signup/verify` — creates Keycloak user (**no realm roles**) + session  
+3. `POST /v1/auth/signup/resend` — after 2 minutes  
+
+Admin email allowlist: `ADMIN_EMAILS`. Privileged perms (`admin`, `bank:write`) are stripped unless allowlisted.
