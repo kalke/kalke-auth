@@ -18,10 +18,10 @@ make token
 ## Production (AWS Free Tier)
 
 Keycloak + Go BFF on a free-tier EC2 (`t3.micro`) + Caddy TLS.  
-See **[DEPLOY.md](DEPLOY.md)**.
+Push to `main` deploys over SSH (see **[DEPLOY.md](DEPLOY.md)**).
 
 ```bash
-# on the EC2 instance
+# one-time on the EC2 instance
 bash deploy/aws-bootstrap.sh
 cp prod.env.example prod.env   # fill secrets
 make aws-up

@@ -1,88 +1,99 @@
 # Deploy
 
 Production auth (**Keycloak + Go BFF**) runs on **AWS Free Tier EC2**.
-No Cloudflare Containers → no Workers Paid.
+Push to `main` → GitHub Actions SSH → `make aws-up` on the instance.
 
 > Free Tier is typically **~12 months** of `t2.micro` / `t3.micro` (750 h/mês).
-> Depois disso a AWS cobra — para ficar $0 para sempre precisarias de outro always-free.
 
-## AWS Free Tier EC2
+## One-time: EC2 + secrets on the VM
 
 ### 1. Create the instance
-
-EC2 → Launch instance:
 
 | Field | Value |
 |---|---|
 | Name | `kalke-auth` |
 | AMI | **Ubuntu Server 24.04 LTS** (Free tier eligible) |
-| Type | **t3.micro** or **t2.micro** (1 GB RAM) |
-| Key pair | create/download `.pem` |
-| Network | public IP / Elastic IP later |
-| Security group | inbound **22** (your IP), **80**, **443** from `0.0.0.0/0` |
-| Storage | 8–30 GB gp3 (Free Tier allowance) |
+| Type | **t3.micro** or **t2.micro** |
+| Key pair | `.pem` (keep private) |
+| Security group | **22** from `0.0.0.0/0` (CI needs this; key-only auth), **80/443** from internet |
+| Storage | 8–30 GB gp3 |
 
-Allocate an **Elastic IP** and associate it (IP estável para o DNS).
+Associate an **Elastic IP**.
 
-### 2. Bootstrap
+> SSH aberto na internet + só chave `.pem` é o padrão simples para Actions.
+> Não uses password login.
+
+### 2. Bootstrap + `prod.env` (só uma vez)
 
 ```bash
-ssh -i your.pem ubuntu@EIP
+ssh -i first.pem ubuntu@EIP
 git clone https://github.com/kalke/kalke-auth.git
 cd kalke-auth
-git checkout cursor/aws-auth-f44b   # until this PR is merged
 bash deploy/aws-bootstrap.sh
-# disconnect + reconnect (docker group)
+# reconnect for docker group
+cp prod.env.example prod.env && nano prod.env   # Neon/Redis/Mailgun/session secrets
+make aws-up   # first manual boot
 ```
 
-O script cria **2 GB de swap** (obrigatório no micro) + Docker + UFW.
+`prod.env` **nunca** vai para o git; o CI não o substitui.
 
-### 3. Secrets
+### 3. DNS
+
+`auth.kalke.dev` **A** → Elastic IP → Cloudflare **DNS only** until TLS works.
+
+## CI/CD (automático)
+
+Depois do merge em `main`, cada push corre: Validate realm → Go test → Docker build → **Deploy to AWS EC2**.
+
+### GitHub Actions secrets (kalke-auth)
+
+No teu PC (onde está o `.pem`):
 
 ```bash
-cp prod.env.example prod.env
-nano prod.env
+# IP público / Elastic IP da instance
+gh secret set AWS_EC2_HOST -R kalke/kalke-auth -b '54.82.62.18'
+
+gh secret set AWS_EC2_USER -R kalke/kalke-auth -b 'ubuntu'
+
+# Conteúdo completo do .pem (incluindo -----BEGIN/END-----)
+gh secret set AWS_EC2_SSH_KEY -R kalke/kalke-auth < first.pem
 ```
 
-Usa os valores de `Documents/kalke/secrets/prod.env.generated` + Neon/Redis/Mailgun:
-
-- `KC_DB_*` → Neon **direct** + `currentSchema=keycloak`
-- `DATABASE_URL` → Neon **pooler**
-- Redis, session/pepper/introspect, `KC_BFF_CLIENT_SECRET`, Mailgun
-
-### 4. Start
+Confere:
 
 ```bash
-make aws-up
-make aws-logs   # first boot can take several minutes on t3.micro
+gh secret list -R kalke/kalke-auth
+# deve listar AWS_EC2_HOST, AWS_EC2_USER, AWS_EC2_SSH_KEY
 ```
 
-### 5. DNS
+### O que o deploy faz
 
-Cloudflare → `auth.kalke.dev` **A** → Elastic IP → **DNS only** (grey) until Caddy gets a cert.
+1. SSH na EC2 com a key do secret  
+2. `git fetch` de `main` (repo privado via `GITHUB_TOKEN`)  
+3. `make aws-up` (rebuild + restart; **mantém** `prod.env`)
+
+### Security group
+
+Se o SSH da instance estiver só no “My IP”, o Actions **falha** (IP do runner muda).  
+Abre **TCP 22** para `0.0.0.0/0` (ou ao menos o range da AWS/GitHub — o mais simples é `0.0.0.0/0` + só key).
+
+## Updates manuais (opcional)
 
 ```bash
-curl -fsS https://auth.kalke.dev/realms/kalke/.well-known/openid-configuration | head
-curl -fsS -o /dev/null -w '%{http_code}\n' https://auth.kalke.dev/v1/health
-```
-
-### 6. Updates
-
-```bash
-cd ~/kalke-auth && git pull && make aws-up
+ssh -i first.pem ubuntu@EIP
+cd ~/kalke-auth && bash deploy/remote-update.sh   # precisa GH_TOKEN
+# ou: git pull && make aws-up
 ```
 
 ## Stay on free tier
 
-- Keep **one** always-on micro (750 h/mês = 1 instância 24/7)
-- DB = Neon free, Redis = Upstash free, mail = Mailgun free tier
-- `kalke.dev` Worker fica no Cloudflare **Free** (sem Containers)
-- Monitora o billing alarm da AWS (Billing → Budgets → $1 alert)
+- Uma micro 24/7 · Neon · Upstash · Mailgun free · Workers Free (sem Containers)
+- Budget alert $1 na AWS
 
 ## Optional Cloudflare Worker proxy
 
-Default CI **does not** deploy to Cloudflare. Only if you set `DEPLOY_CF_WORKER=true` + `ORIGIN_URL`.
+Só se `DEPLOY_CF_WORKER=true` + `ORIGIN_URL`. Por defeito **não** corre.
 
 ## Signup / lockdown
 
-Email OTP signup; admin never via site signup (`ADMIN_EMAILS`). Privileged perms stripped unless allowlisted.
+Email OTP; admin nunca via signup (`ADMIN_EMAILS`).
