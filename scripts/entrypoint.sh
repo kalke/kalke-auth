@@ -41,6 +41,10 @@ if [[ -n "${KC_BOOTSTRAP_ADMIN_USERNAME:-}" && -n "${KC_BOOTSTRAP_ADMIN_PASSWORD
 		echo "kalke-bff client not found" >&2
 		exit 1
 	fi
+	# Public OIDC issuer stays on auth.kalke.dev while KC_HOSTNAME is the Tunnel URL.
+	FRONTEND_URL="${KC_REALM_FRONTEND_URL:-https://auth.kalke.dev}"
+	echo "setting kalke realm frontendUrl=${FRONTEND_URL}"
+	/opt/keycloak/bin/kcadm.sh update realms/kalke -s "attributes.frontendUrl=${FRONTEND_URL}"
 fi
 
 export KC_INTERNAL_URL="${KC_INTERNAL_URL:-http://127.0.0.1:${KC_HTTP_PORT}}"

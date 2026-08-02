@@ -9,6 +9,9 @@
   "editUsernameAllowed": false,
   "bruteForceProtected": true,
   "sslRequired": "external",
+  "attributes": {
+    "frontendUrl": "https://auth.kalke.dev"
+  },
   "roles": {
     "realm": [
       {

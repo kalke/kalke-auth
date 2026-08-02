@@ -103,12 +103,18 @@ cd ~/kalke-auth
 nano prod.env
 # adiciona:
 # CLOUDFLARE_TUNNEL_TOKEN='eyJ...'
+# KC_HOSTNAME='https://keycloak.kalke.dev'
 # KC_HOSTNAME_ADMIN='https://keycloak.kalke.dev'
+# KC_REALM_FRONTEND_URL='https://auth.kalke.dev'
 
 git pull origin main
 make aws-up
 docker compose -f docker-compose.aws.yml --env-file prod.env --profile tunnel ps
 ```
+
+**Importante:** `KC_HOSTNAME` e `KC_HOSTNAME_ADMIN` devem ser **iguais** (`https://keycloak.kalke.dev`).  
+Se `KC_HOSTNAME` apontar para `auth.kalke.dev`, o admin SPA usa `auth-server-url=https://auth.kalke.dev` onde o BFF **não** é o Keycloak → *"Something went wrong"*.  
+O issuer público do realm `kalke` continua em `auth.kalke.dev` via `attributes.frontendUrl` / `KC_REALM_FRONTEND_URL`.
 
 Abre: `https://keycloak.kalke.dev/admin/`  
 → login Cloudflare (teu e-mail) → login Keycloak (`admin` / senha do `prod.env`).
