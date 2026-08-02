@@ -26,7 +26,9 @@ fi
 echo "==> Updating to origin/${BRANCH}"
 git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/kalke/kalke-auth.git"
 git fetch --depth=1 origin "${BRANCH}"
-git checkout -B "${BRANCH}" "FETCH_HEAD"
+# Discard local tracked edits on the host (prod.env is gitignored and kept).
+git checkout -f -B "${BRANCH}" "FETCH_HEAD"
+git clean -fd
 # Drop token from remote URL so it is not stored on disk.
 git remote set-url origin "https://github.com/kalke/kalke-auth.git"
 
