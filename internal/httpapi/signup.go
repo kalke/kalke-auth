@@ -220,14 +220,8 @@ func (s *Server) signupResend(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) sendSignupOTP(ctx context.Context, email, otp string) error {
-	subject, text, html := mail.SignupOTPEmail("kalke", otp)
-	return s.mailer.Send(ctx, mail.Message{
-		To:      email,
-		Subject: subject,
-		Text:    text,
-		HTML:    html,
-	})
+func (s *Server) sendSignupOTP(ctx context.Context, email, code string) error {
+	return s.sendAuthOTP(ctx, mail.OTPSignup, email, code)
 }
 
 func jsonDecode(r *http.Request, dst any) error {

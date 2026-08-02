@@ -20,6 +20,7 @@ import (
 	"github.com/kalke/kalke-auth/internal/config"
 	"github.com/kalke/kalke-auth/internal/keycloak"
 	"github.com/kalke/kalke-auth/internal/mail"
+	"github.com/kalke/kalke-auth/internal/otp"
 	"github.com/kalke/kalke-auth/internal/security"
 	"github.com/kalke/kalke-auth/internal/signup"
 	"github.com/kalke/kalke-auth/internal/store"
@@ -28,15 +29,17 @@ import (
 const sessionCookie = "kalke_session"
 
 type Server struct {
-	cfg     config.Config
-	store   *store.Store
-	kc      *keycloak.Client
-	admin   *keycloak.AdminClient
-	rdb     *redis.Client
-	pending *signup.Store
-	mailer  mail.Mailer
-	proxy   *httputil.ReverseProxy
-	log     *slog.Logger
+	cfg      config.Config
+	store    *store.Store
+	kc       *keycloak.Client
+	admin    *keycloak.AdminClient
+	rdb      *redis.Client
+	pending  *signup.Store
+	loginOTP *otp.Store
+	resetOTP *otp.Store
+	mailer   mail.Mailer
+	proxy    *httputil.ReverseProxy
+	log      *slog.Logger
 }
 
 type sessionPrincipal struct {
@@ -57,15 +60,17 @@ func New(cfg config.Config, st *store.Store, kc *keycloak.Client, admin *keycloa
 		mailer = mail.LogMailer{Log: log}
 	}
 	return &Server{
-		cfg:     cfg,
-		store:   st,
-		kc:      kc,
-		admin:   admin,
-		rdb:     rdb,
-		pending: signup.NewStore(rdb, cfg.TokenPepper),
-		mailer:  mailer,
-		proxy:   proxy,
-		log:     log,
+		cfg:      cfg,
+		store:    st,
+		kc:       kc,
+		admin:    admin,
+		rdb:      rdb,
+		pending:  signup.NewStore(rdb, cfg.TokenPepper),
+		loginOTP: otp.NewStore(rdb, cfg.TokenPepper, "login:otp:"),
+		resetOTP: otp.NewStore(rdb, cfg.TokenPepper, "reset:otp:"),
+		mailer:   mailer,
+		proxy:    proxy,
+		log:      log,
 	}
 }
 
@@ -74,12 +79,18 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/health", s.health)
 	mux.HandleFunc("GET /health", s.health)
 	mux.HandleFunc("POST /v1/auth/login", s.login)
+	mux.HandleFunc("POST /v1/auth/login/email", s.passwordlessStart)
+	mux.HandleFunc("POST /v1/auth/login/email/verify", s.passwordlessVerify)
+	mux.HandleFunc("POST /v1/auth/login/email/resend", s.passwordlessResend)
 	mux.HandleFunc("POST /v1/auth/signup", s.signupStart)
 	mux.HandleFunc("POST /v1/auth/signup/verify", s.signupVerify)
 	mux.HandleFunc("POST /v1/auth/signup/resend", s.signupResend)
 	mux.HandleFunc("POST /v1/auth/logout", s.logout)
 	mux.HandleFunc("GET /v1/auth/me", s.me)
 	mux.HandleFunc("POST /v1/auth/password", s.changePassword)
+	mux.HandleFunc("POST /v1/auth/password/forgot", s.forgotPasswordStart)
+	mux.HandleFunc("POST /v1/auth/password/forgot/verify", s.forgotPasswordVerify)
+	mux.HandleFunc("POST /v1/auth/password/forgot/resend", s.forgotPasswordResend)
 	mux.HandleFunc("POST /v1/tokens", s.createToken)
 	mux.HandleFunc("GET /v1/tokens", s.listTokens)
 	mux.HandleFunc("DELETE /v1/tokens/{id}", s.revokeToken)

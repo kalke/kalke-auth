@@ -164,6 +164,111 @@ func (a *AdminClient) clearRequiredActions(ctx context.Context, tok, userID stri
 	return nil
 }
 
+type RealmUser struct {
+	ID      string
+	Email   string
+	Enabled bool
+}
+
+// FindUserByEmail returns the first exact email match in the kalke realm.
+func (a *AdminClient) FindUserByEmail(ctx context.Context, email string) (RealmUser, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" {
+		return RealmUser{}, fmt.Errorf("email required")
+	}
+	tok, err := a.token(ctx)
+	if err != nil {
+		return RealmUser{}, err
+	}
+	q := url.Values{}
+	q.Set("email", email)
+	q.Set("exact", "true")
+	q.Set("max", "2")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		a.internalBase+"/admin/realms/kalke/users?"+q.Encode(), nil)
+	if err != nil {
+		return RealmUser{}, err
+	}
+	req.Header.Set("Authorization", "Bearer "+tok)
+	resp, err := a.http.Do(req)
+	if err != nil {
+		return RealmUser{}, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode != http.StatusOK {
+		return RealmUser{}, fmt.Errorf("find user: %d %s", resp.StatusCode, string(body))
+	}
+	var users []struct {
+		ID      string `json:"id"`
+		Email   string `json:"email"`
+		Enabled bool   `json:"enabled"`
+	}
+	if err := json.Unmarshal(body, &users); err != nil {
+		return RealmUser{}, err
+	}
+	if len(users) == 0 {
+		return RealmUser{}, fmt.Errorf("user not found")
+	}
+	u := users[0]
+	if u.ID == "" {
+		return RealmUser{}, fmt.Errorf("user not found")
+	}
+	outEmail := strings.ToLower(strings.TrimSpace(u.Email))
+	if outEmail == "" {
+		outEmail = email
+	}
+	return RealmUser{ID: u.ID, Email: outEmail, Enabled: u.Enabled}, nil
+}
+
+// ListRealmRoleNames returns assigned realm role names for a user.
+func (a *AdminClient) ListRealmRoleNames(ctx context.Context, userID string) ([]string, error) {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return nil, fmt.Errorf("user id required")
+	}
+	tok, err := a.token(ctx)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		a.internalBase+"/admin/realms/kalke/users/"+url.PathEscape(userID)+"/role-mappings/realm", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+tok)
+	resp, err := a.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("list roles: %d %s", resp.StatusCode, string(body))
+	}
+	var roles []struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(body, &roles); err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(roles))
+	for _, r := range roles {
+		name := strings.TrimSpace(r.Name)
+		if name == "" {
+			continue
+		}
+		// Skip Keycloak composite defaults that are not app permissions.
+		if strings.HasPrefix(name, "default-roles-") ||
+			name == "offline_access" ||
+			name == "uma_authorization" {
+			continue
+		}
+		out = append(out, name)
+	}
+	return out, nil
+}
+
 // SetPassword updates a user's password via the Admin API (non-temporary).
 func (a *AdminClient) SetPassword(ctx context.Context, userID, password string) error {
 	userID = strings.TrimSpace(userID)
