@@ -32,6 +32,10 @@ git clean -fd
 # Drop token from remote URL so it is not stored on disk.
 git remote set-url origin "https://github.com/kalke/kalke-auth.git"
 
+echo "==> Freeing Docker disk (t3.micro root is tight)"
+docker builder prune -af >/dev/null || true
+docker image prune -af >/dev/null || true
+
 echo "==> Building and restarting stack"
 make aws-up
 
