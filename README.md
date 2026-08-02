@@ -15,8 +15,14 @@ make jwks
 make token
 ```
 
-Local Compose still uses Keycloak + Caddy for development. Production runs Go + Keycloak in one Cloudflare container — see [DEPLOY.md](DEPLOY.md).
+## Production (AWS Free Tier)
 
-## Production
+Keycloak + Go BFF on a free-tier EC2 (`t3.micro`) + Caddy TLS.  
+Push to `main` deploys over SSH (see **[DEPLOY.md](DEPLOY.md)**).
 
-Push to `main` deploys via GitHub Actions. Secret **names** are listed in `DEPLOY.md`; values stay in GitHub Actions / Cloudflare only.
+```bash
+# one-time on the EC2 instance
+bash deploy/aws-bootstrap.sh
+cp prod.env.example prod.env   # fill secrets
+make aws-up
+```

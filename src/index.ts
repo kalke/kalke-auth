@@ -1,95 +1,45 @@
-import { Container, getContainer } from "@cloudflare/containers";
+/**
+ * Optional Cloudflare Worker edge for auth.kalke.dev.
+ *
+ * Preferred prod path: point DNS (A/AAAA) at the AWS EC2 and let Caddy terminate TLS.
+ * This Worker is only needed if you want an orange-cloud proxy in front of the VM.
+ *
+ * Set secret/var ORIGIN_URL to the upstream, e.g. https://AUTH_VM_IP or http://10.0.0.x:8080
+ * (when using HTTPS to a raw IP, prefer DNS-only + Caddy instead).
+ */
 
 export interface Env {
-	KEYCLOAK: DurableObjectNamespace<KeycloakContainer>;
-	KC_HOSTNAME: string;
-	KC_DB: string;
-	KC_HTTP_ENABLED: string;
-	KC_HOSTNAME_STRICT: string;
-	KC_PROXY_HEADERS: string;
-	KC_HEALTH_ENABLED: string;
-	KC_DB_URL: string;
-	KC_DB_USERNAME: string;
-	KC_DB_PASSWORD: string;
-	KC_BOOTSTRAP_ADMIN_USERNAME: string;
-	KC_BOOTSTRAP_ADMIN_PASSWORD: string;
-	DATABASE_URL: string;
-	REDIS_ADDR: string;
-	REDIS_PASSWORD: string;
-	REDIS_TLS: string;
-	SESSION_SECRET: string;
-	TOKEN_HASH_PEPPER: string;
-	INTROSPECT_SECRET: string;
-	KC_BFF_CLIENT_ID: string;
-	KC_BFF_CLIENT_SECRET: string;
-	SIGNUP_ENABLED: string;
-	ADMIN_EMAILS: string;
-	MAIL_FROM: string;
-	MAILGUN_API_KEY: string;
-	MAILGUN_DOMAIN: string;
-	RESEND_API_KEY: string;
-	CORS_ORIGINS: string;
-	COOKIE_DOMAIN: string;
-}
-
-function containerEnvVars(env: Env): Record<string, string> {
-	return {
-		KC_DB: env.KC_DB || "postgres",
-		KC_DB_URL: env.KC_DB_URL,
-		KC_DB_USERNAME: env.KC_DB_USERNAME,
-		KC_DB_PASSWORD: env.KC_DB_PASSWORD,
-		KC_HOSTNAME: env.KC_HOSTNAME || "https://auth.kalke.dev",
-		KC_HTTP_ENABLED: env.KC_HTTP_ENABLED || "true",
-		KC_HOSTNAME_STRICT: env.KC_HOSTNAME_STRICT || "true",
-		KC_PROXY_HEADERS: env.KC_PROXY_HEADERS || "xforwarded",
-		KC_HEALTH_ENABLED: env.KC_HEALTH_ENABLED || "true",
-		KC_BOOTSTRAP_ADMIN_USERNAME: env.KC_BOOTSTRAP_ADMIN_USERNAME || "admin",
-		KC_BOOTSTRAP_ADMIN_PASSWORD: env.KC_BOOTSTRAP_ADMIN_PASSWORD,
-		KC_HTTP_PORT: "8081",
-		HTTP_ADDR: ":8080",
-		KC_INTERNAL_URL: "http://127.0.0.1:8081",
-		KC_PUBLIC_ISSUER: "https://auth.kalke.dev/realms/kalke",
-		DATABASE_URL: env.DATABASE_URL,
-		DB_SEARCH_PATH: "app",
-		REDIS_ADDR: env.REDIS_ADDR,
-		REDIS_PASSWORD: env.REDIS_PASSWORD || "",
-		REDIS_TLS: env.REDIS_TLS || "true",
-		SESSION_SECRET: env.SESSION_SECRET,
-		TOKEN_HASH_PEPPER: env.TOKEN_HASH_PEPPER,
-		INTROSPECT_SECRET: env.INTROSPECT_SECRET,
-		KC_BFF_CLIENT_ID: env.KC_BFF_CLIENT_ID || "kalke-bff",
-		KC_BFF_CLIENT_SECRET: env.KC_BFF_CLIENT_SECRET,
-		SIGNUP_ENABLED: env.SIGNUP_ENABLED || "true",
-		ADMIN_EMAILS: env.ADMIN_EMAILS || "henriquekalke@icloud.com",
-		MAIL_FROM: env.MAIL_FROM || "kalke <noreply@kalke.dev>",
-		MAILGUN_API_KEY: env.MAILGUN_API_KEY || "",
-		MAILGUN_DOMAIN: env.MAILGUN_DOMAIN || "",
-		RESEND_API_KEY: env.RESEND_API_KEY || "",
-		CORS_ORIGINS: env.CORS_ORIGINS || "https://kalke.dev,https://www.kalke.dev",
-		COOKIE_DOMAIN: env.COOKIE_DOMAIN || ".kalke.dev",
-	};
-}
-
-export class KeycloakContainer extends Container<Env> {
-	defaultPort = 8080;
-	sleepAfter = "30m";
-
-	override onStart(): void {
-		this.envVars = containerEnvVars(this.env);
-	}
+	/** Upstream kalke-auth (Caddy or :8080 on the AWS EC2). */
+	ORIGIN_URL: string;
 }
 
 export default {
 	async fetch(request: Request, env: Env): Promise<Response> {
-		const container = getContainer(env.KEYCLOAK, "primary");
-		await container.startAndWaitForPorts({
-			startOptions: {
-				envVars: containerEnvVars(env),
-			},
-			cancellationOptions: {
-				portReadyTimeoutMS: 240_000,
-			},
-		});
-		return container.fetch(request);
+		const origin = (env.ORIGIN_URL || "").replace(/\/$/, "");
+		if (!origin) {
+			return new Response(
+				"auth origin not configured — set ORIGIN_URL or point DNS at the AWS EC2",
+				{ status: 503 },
+			);
+		}
+
+		const incoming = new URL(request.url);
+		const upstream = new URL(origin);
+		upstream.pathname = incoming.pathname;
+		upstream.search = incoming.search;
+
+		const headers = new Headers(request.headers);
+		headers.set("X-Forwarded-Host", incoming.host);
+		headers.set("X-Forwarded-Proto", incoming.protocol.replace(":", ""));
+		headers.delete("host");
+
+		return fetch(
+			new Request(upstream.toString(), {
+				method: request.method,
+				headers,
+				body: request.body,
+				redirect: "manual",
+			}),
+		);
 	},
 };
