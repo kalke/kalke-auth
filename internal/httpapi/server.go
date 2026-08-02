@@ -402,12 +402,21 @@ func (s *Server) oidcProxy(w http.ResponseWriter, r *http.Request) {
 }
 
 func isPublicOIDCPath(path string) bool {
-	// Only discovery + JWKS are public. Token/admin/theme/resources stay internal.
+	// Browser OAuth (Google IdP) needs auth + broker (+ optional login UI).
+	// Token/admin stay internal — the BFF exchanges codes via KC_INTERNAL_URL.
 	p := strings.ToLower(path)
 	switch {
 	case p == "/realms/kalke/.well-known/openid-configuration":
 		return true
 	case strings.HasPrefix(p, "/realms/kalke/protocol/openid-connect/certs"):
+		return true
+	case p == "/realms/kalke/protocol/openid-connect/auth":
+		return true
+	case strings.HasPrefix(p, "/realms/kalke/broker/"):
+		return true
+	case strings.HasPrefix(p, "/realms/kalke/login-actions/"):
+		return true
+	case strings.HasPrefix(p, "/resources/"):
 		return true
 	default:
 		return false
