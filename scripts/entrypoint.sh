@@ -53,10 +53,35 @@ if [[ -n "${KC_BOOTSTRAP_ADMIN_USERNAME:-}" && -n "${KC_BOOTSTRAP_ADMIN_PASSWORD
 
 	# Silent first-broker login: create user if new, auto-link if email already exists.
 	# Avoids Keycloak "review profile" / "confirm link" screens in the OAuth redirect.
+	# Pure shell (Keycloak image has no python3).
 	ensure_kalke_first_broker_flow() {
 		local flow='kalke first broker login'
 		local handle="${flow} Handle Existing Account"
 		local execs review confirm verify auto
+
+		find_exec_id() {
+			# $1=field (providerId|displayName) $2=exact or substring value
+			local field="$1" value="$2"
+			printf '%s\n' "$execs" | awk -v field="$field" -v value="$value" '
+				$0 ~ "\"id\"[[:space:]]*:" {
+					line=$0
+					sub(/^.*"id"[[:space:]]*:[[:space:]]*"/, "", line)
+					sub(/".*/, "", line)
+					id=line
+				}
+				$0 ~ ("\"" field "\"[[:space:]]*:") && index($0, value) {
+					print id
+					exit
+				}
+			'
+		}
+
+		set_exec_req() {
+			local id="$1" req="$2"
+			[[ -n "$id" ]] || return 0
+			/opt/keycloak/bin/kcadm.sh update "authentication/flows/${flow// /%20}/executions" -r kalke \
+				-b "{\"id\":\"${id}\",\"requirement\":\"${req}\"}" >/dev/null
+		}
 
 		if ! /opt/keycloak/bin/kcadm.sh get authentication/flows -r kalke --fields alias --format csv --noquotes \
 			| grep -Fxq "$flow"; then
@@ -66,34 +91,28 @@ if [[ -n "${KC_BOOTSTRAP_ADMIN_USERNAME:-}" && -n "${KC_BOOTSTRAP_ADMIN_PASSWORD
 		fi
 
 		execs="$(/opt/keycloak/bin/kcadm.sh get "authentication/flows/${flow// /%20}/executions" -r kalke)"
-
-		set_exec_req() {
-			local id="$1" req="$2"
-			[[ -n "$id" ]] || return 0
-			/opt/keycloak/bin/kcadm.sh update "authentication/flows/${flow// /%20}/executions" -r kalke \
-				-b "{\"id\":\"${id}\",\"requirement\":\"${req}\"}" >/dev/null
-		}
-
-		review="$(printf '%s' "$execs" | python3 -c 'import json,sys; print(next((e["id"] for e in json.load(sys.stdin) if e.get("providerId")=="idp-review-profile"), ""))')"
-		confirm="$(printf '%s' "$execs" | python3 -c 'import json,sys; print(next((e["id"] for e in json.load(sys.stdin) if e.get("providerId")=="idp-confirm-link"), ""))')"
-		verify="$(printf '%s' "$execs" | python3 -c 'import json,sys; print(next((e["id"] for e in json.load(sys.stdin) if (e.get("displayName") or "").endswith("Account verification options")), ""))')"
+		review="$(find_exec_id providerId idp-review-profile)"
+		confirm="$(find_exec_id providerId idp-confirm-link)"
+		verify="$(find_exec_id displayName 'Account verification options')"
 		set_exec_req "$review" DISABLED
 		set_exec_req "$confirm" DISABLED
 		set_exec_req "$verify" DISABLED
 
 		execs="$(/opt/keycloak/bin/kcadm.sh get "authentication/flows/${flow// /%20}/executions" -r kalke)"
-		auto="$(printf '%s' "$execs" | python3 -c 'import json,sys; print(next((e["id"] for e in json.load(sys.stdin) if e.get("providerId")=="idp-auto-link"), ""))')"
+		auto="$(find_exec_id providerId idp-auto-link)"
 		if [[ -z "$auto" ]]; then
 			echo "adding idp-auto-link to ${handle}"
 			/opt/keycloak/bin/kcadm.sh create "authentication/flows/${handle// /%20}/executions/execution" -r kalke \
 				-s provider=idp-auto-link >/dev/null
 			execs="$(/opt/keycloak/bin/kcadm.sh get "authentication/flows/${flow// /%20}/executions" -r kalke)"
-			auto="$(printf '%s' "$execs" | python3 -c 'import json,sys; print(next((e["id"] for e in json.load(sys.stdin) if e.get("providerId")=="idp-auto-link"), ""))')"
+			auto="$(find_exec_id providerId idp-auto-link)"
 		fi
 		set_exec_req "$auto" REQUIRED
 		echo "first broker flow ready: ${flow}"
 	}
-	ensure_kalke_first_broker_flow
+	if ! ensure_kalke_first_broker_flow; then
+		echo "warning: could not configure first broker login flow" >&2
+	fi
 
 	# Ensure Google IdP stays enabled when secrets are present on the host.
 	if [[ -n "${GOOGLE_IDP_CLIENT_ID:-}" && -n "${GOOGLE_IDP_CLIENT_SECRET:-}" ]]; then
