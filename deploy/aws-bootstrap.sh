@@ -29,7 +29,7 @@ fi
 
 echo "==> Installing Docker Engine + Compose plugin"
 $SUDO apt-get update -y
-$SUDO apt-get install -y ca-certificates curl git ufw
+$SUDO apt-get install -y ca-certificates curl git ufw make
 $SUDO install -m 0755 -d /etc/apt/keyrings
 if [[ ! -f /etc/apt/keyrings/docker.asc ]]; then
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg | $SUDO tee /etc/apt/keyrings/docker.asc >/dev/null
