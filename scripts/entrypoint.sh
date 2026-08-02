@@ -41,8 +41,7 @@ if [[ -n "${KC_BOOTSTRAP_ADMIN_USERNAME:-}" && -n "${KC_BOOTSTRAP_ADMIN_PASSWORD
 			-s "standardFlowEnabled=true" \
 			-s "directAccessGrantsEnabled=true" \
 			-s 'redirectUris=["https://auth.kalke.dev/v1/auth/callback"]' \
-			-s 'webOrigins=["https://auth.kalke.dev","https://kalke.dev","https://www.kalke.dev"]' \
-			-s 'attributes.pkce.code.challenge.method=S256'
+			-s 'webOrigins=["https://auth.kalke.dev","https://kalke.dev","https://www.kalke.dev"]'
 	else
 		echo "kalke-bff client not found" >&2
 		exit 1
