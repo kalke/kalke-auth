@@ -66,8 +66,18 @@ type createUserBody struct {
 	Attributes    map[string][]string `json:"attributes,omitempty"`
 }
 
-// CreateUserWithRole creates a realm user, sets password, and assigns a realm role.
-func (a *AdminClient) CreateUserWithRole(ctx context.Context, email, password, roleName string) (userID string, err error) {
+func isPrivilegedRealmRole(roleName string) bool {
+	switch strings.TrimSpace(roleName) {
+	case "admin", "bank:write":
+		return true
+	default:
+		return false
+	}
+}
+
+// CreateUser creates a realm user with password and no realm roles.
+// Site signup must use this — never grant admin/bank:write via the public path.
+func (a *AdminClient) CreateUser(ctx context.Context, email, password string) (userID string, err error) {
 	tok, err := a.token(ctx)
 	if err != nil {
 		return "", err
@@ -110,8 +120,23 @@ func (a *AdminClient) CreateUserWithRole(ctx context.Context, email, password, r
 		return "", fmt.Errorf("create user: missing location")
 	}
 	parts := strings.Split(strings.TrimRight(loc, "/"), "/")
-	userID = parts[len(parts)-1]
+	return parts[len(parts)-1], nil
+}
 
+// CreateUserWithRole creates a realm user, sets password, and assigns a realm role.
+// Privileged roles (admin, bank:write) are rejected.
+func (a *AdminClient) CreateUserWithRole(ctx context.Context, email, password, roleName string) (userID string, err error) {
+	if isPrivilegedRealmRole(roleName) {
+		return "", fmt.Errorf("role %q cannot be assigned via API", roleName)
+	}
+	userID, err = a.CreateUser(ctx, email, password)
+	if err != nil {
+		return "", err
+	}
+	tok, err := a.token(ctx)
+	if err != nil {
+		return userID, err
+	}
 	if err := a.assignRealmRole(ctx, tok, userID, roleName); err != nil {
 		return userID, err
 	}

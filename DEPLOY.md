@@ -15,4 +15,8 @@ Required GitHub Actions secret **names** (values are private; never commit them)
 Public OIDC surface is discovery + JWKS only. Login/signup are rate-limited fail-closed
 (Redis errors deny). Set wrangler var `SIGNUP_ENABLED=false` to disable signup entirely.
 
+Admin is email-allowlisted (`ADMIN_EMAILS`, default your owner email). Public signup creates
+users with **no** realm roles and cannot register an allowlisted admin email. Privileged
+permissions (`admin`, `bank:write`) are stripped from sessions/PATs unless the email matches.
+
 Operational details for schemas, playground users, and secret generation live in private notes — not in this public repo.

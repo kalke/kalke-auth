@@ -138,7 +138,13 @@ func (s *Server) signup(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusUnauthorized, "invalid signup")
 		return
 	}
-	if _, err := s.admin.CreateUserWithRole(r.Context(), body.Email, body.Password, "extract:write"); err != nil {
+	// Admin accounts are provisioned only in Keycloak — never via public signup.
+	if s.isAdminEmail(body.Email) {
+		writeErr(w, http.StatusUnauthorized, "invalid signup")
+		return
+	}
+	// No realm roles: signup users cannot receive admin / bank:write / extract:write.
+	if _, err := s.admin.CreateUser(r.Context(), body.Email, body.Password); err != nil {
 		if strings.Contains(err.Error(), "user exists") {
 			writeErr(w, http.StatusConflict, "user exists")
 			return
@@ -168,17 +174,18 @@ func (s *Server) issueSession(w http.ResponseWriter, r *http.Request, user keycl
 	if err != nil {
 		return err
 	}
+	email := user.Email
+	if email == "" {
+		email = fallbackEmail
+	}
 	id := uuid.New()
 	sess := store.Session{
 		ID:          id,
 		UserSub:     user.Subject,
-		UserEmail:   user.Email,
-		Permissions: user.Permissions,
+		UserEmail:   email,
+		Permissions: s.effectivePermissions(email, user.Permissions),
 		TokenHash:   hash,
 		ExpiresAt:   time.Now().UTC().Add(s.cfg.SessionTTL),
-	}
-	if sess.UserEmail == "" {
-		sess.UserEmail = fallbackEmail
 	}
 	if err := s.store.CreateSession(r.Context(), sess); err != nil {
 		return err
@@ -225,7 +232,7 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"email":       p.UserEmail,
-		"permissions": p.Permissions,
+		"permissions": s.effectivePermissions(p.UserEmail, p.Permissions),
 	})
 }
 
@@ -259,7 +266,7 @@ func (s *Server) createToken(w http.ResponseWriter, r *http.Request) {
 		Name:        body.Name,
 		TokenPrefix: prefix,
 		TokenHash:   hash,
-		Permissions: p.Permissions,
+		Permissions: s.effectivePermissions(p.UserEmail, p.Permissions),
 	}
 	if err := s.store.CreateAPIToken(r.Context(), tok); err != nil {
 		s.log.Error("create token", "err", err)
@@ -355,7 +362,7 @@ func (s *Server) introspect(w http.ResponseWriter, r *http.Request) {
 		"active":      true,
 		"sub":         row.UserSub,
 		"email":       row.UserEmail,
-		"permissions": row.Permissions,
+		"permissions": s.effectivePermissions(row.UserEmail, row.Permissions),
 	})
 }
 

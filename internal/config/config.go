@@ -20,6 +20,7 @@ type Config struct {
 	IntrospectSecret    string
 	SignupEnabled       bool
 	SignupInviteCode    string
+	AdminEmails         []string
 	KCInternalURL       string
 	KCPublicIssuer      string
 	BFFClientID         string
@@ -76,6 +77,10 @@ func Load() (Config, error) {
 	if len(cors) == 0 {
 		cors = []string{"https://kalke.dev", "https://www.kalke.dev"}
 	}
+	adminEmails := parseCSV(os.Getenv("ADMIN_EMAILS"))
+	if len(adminEmails) == 0 {
+		adminEmails = []string{"henriquekalke@icloud.com"}
+	}
 
 	return Config{
 		HTTPAddr:            getenv("HTTP_ADDR", ":8080"),
@@ -89,6 +94,7 @@ func Load() (Config, error) {
 		IntrospectSecret:    introspect,
 		SignupEnabled:       signupEnabled,
 		SignupInviteCode:    invite,
+		AdminEmails:         adminEmails,
 		KCInternalURL:       strings.TrimSuffix(getenv("KC_INTERNAL_URL", "http://127.0.0.1:8081"), "/"),
 		KCPublicIssuer:      strings.TrimSuffix(getenv("KC_PUBLIC_ISSUER", "https://auth.kalke.dev/realms/kalke"), "/"),
 		BFFClientID:         bffID,
