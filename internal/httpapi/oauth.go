@@ -17,8 +17,7 @@ const oauthStateTTL = 10 * time.Minute
 
 var oauthProviders = map[string]string{
 	"google": "google",
-	// Ready for later IdPs once configured in Keycloak:
-	// "github": "github",
+	"github": "github",
 	// "apple":  "apple",
 }
 

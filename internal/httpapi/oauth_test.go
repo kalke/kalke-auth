@@ -33,6 +33,9 @@ func TestOAuthProviderAllowlist(t *testing.T) {
 	if _, ok := oauthProviders["google"]; !ok {
 		t.Fatal("google missing")
 	}
+	if _, ok := oauthProviders["github"]; !ok {
+		t.Fatal("github missing")
+	}
 	if _, ok := oauthProviders["facebook"]; ok {
 		t.Fatal("facebook should not be allowed")
 	}

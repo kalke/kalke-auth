@@ -77,6 +77,31 @@ if [[ -n "${KC_BOOTSTRAP_ADMIN_USERNAME:-}" && -n "${KC_BOOTSTRAP_ADMIN_PASSWORD
 				-s "config.useJwksUrl=true"
 		fi
 	fi
+
+	if [[ -n "${GITHUB_IDP_CLIENT_ID:-}" && -n "${GITHUB_IDP_CLIENT_SECRET:-}" ]]; then
+		echo "configuring github identity provider"
+		if /opt/keycloak/bin/kcadm.sh get identity-provider/instances/github -r kalke >/dev/null 2>&1; then
+			/opt/keycloak/bin/kcadm.sh update identity-provider/instances/github -r kalke \
+				-s enabled=true \
+				-s trustEmail=true \
+				-s "config.clientId=${GITHUB_IDP_CLIENT_ID}" \
+				-s "config.clientSecret=${GITHUB_IDP_CLIENT_SECRET}" \
+				-s "config.defaultScope=user:email read:user" \
+				-s "config.syncMode=IMPORT"
+		else
+			/opt/keycloak/bin/kcadm.sh create identity-provider/instances -r kalke \
+				-s alias=github \
+				-s providerId=github \
+				-s enabled=true \
+				-s displayName=GitHub \
+				-s trustEmail=true \
+				-s storeToken=false \
+				-s "config.clientId=${GITHUB_IDP_CLIENT_ID}" \
+				-s "config.clientSecret=${GITHUB_IDP_CLIENT_SECRET}" \
+				-s "config.defaultScope=user:email read:user" \
+				-s "config.syncMode=IMPORT"
+		fi
+	fi
 fi
 
 export KC_INTERNAL_URL="${KC_INTERNAL_URL:-http://127.0.0.1:${KC_HTTP_PORT}}"
