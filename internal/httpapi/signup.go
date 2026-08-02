@@ -13,19 +13,6 @@ import (
 	"github.com/kalke/kalke-auth/internal/signup"
 )
 
-func (s *Server) isAdminEmail(email string) bool {
-	email = strings.ToLower(strings.TrimSpace(email))
-	if email == "" {
-		return false
-	}
-	for _, allowed := range s.cfg.AdminEmails {
-		if email == strings.ToLower(strings.TrimSpace(allowed)) {
-			return true
-		}
-	}
-	return false
-}
-
 func (s *Server) signupStart(w http.ResponseWriter, r *http.Request) {
 	if !s.cfg.SignupEnabled {
 		http.NotFound(w, r)

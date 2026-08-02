@@ -131,17 +131,18 @@ func (s *Server) issueSession(w http.ResponseWriter, r *http.Request, user keycl
 	if err != nil {
 		return err
 	}
+	email := user.Email
+	if email == "" {
+		email = fallbackEmail
+	}
 	id := uuid.New()
 	sess := store.Session{
 		ID:          id,
 		UserSub:     user.Subject,
-		UserEmail:   user.Email,
-		Permissions: user.Permissions,
+		UserEmail:   email,
+		Permissions: s.effectivePermissions(email, user.Permissions),
 		TokenHash:   hash,
 		ExpiresAt:   time.Now().UTC().Add(s.cfg.SessionTTL),
-	}
-	if sess.UserEmail == "" {
-		sess.UserEmail = fallbackEmail
 	}
 	if err := s.store.CreateSession(r.Context(), sess); err != nil {
 		return err
@@ -188,7 +189,7 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"email":       p.UserEmail,
-		"permissions": p.Permissions,
+		"permissions": s.effectivePermissions(p.UserEmail, p.Permissions),
 	})
 }
 
@@ -222,7 +223,7 @@ func (s *Server) createToken(w http.ResponseWriter, r *http.Request) {
 		Name:        body.Name,
 		TokenPrefix: prefix,
 		TokenHash:   hash,
-		Permissions: p.Permissions,
+		Permissions: s.effectivePermissions(p.UserEmail, p.Permissions),
 	}
 	if err := s.store.CreateAPIToken(r.Context(), tok); err != nil {
 		s.log.Error("create token", "err", err)
@@ -318,7 +319,7 @@ func (s *Server) introspect(w http.ResponseWriter, r *http.Request) {
 		"active":      true,
 		"sub":         row.UserSub,
 		"email":       row.UserEmail,
-		"permissions": row.Permissions,
+		"permissions": s.effectivePermissions(row.UserEmail, row.Permissions),
 	})
 }
 
@@ -331,14 +332,13 @@ func (s *Server) oidcProxy(w http.ResponseWriter, r *http.Request) {
 }
 
 func isPublicOIDCPath(path string) bool {
+	// Only discovery + JWKS are public. Token/admin/theme/resources stay internal.
 	p := strings.ToLower(path)
 	switch {
 	case p == "/realms/kalke/.well-known/openid-configuration":
 		return true
 	case strings.HasPrefix(p, "/realms/kalke/protocol/openid-connect/certs"):
 		return true
-	case strings.HasPrefix(p, "/resources/"):
-		return true // Keycloak may reference theme assets from discovery pages; keep minimal
 	default:
 		return false
 	}
@@ -373,13 +373,14 @@ func (s *Server) principalFromRequest(r *http.Request) (sessionPrincipal, error)
 }
 
 func (s *Server) allowRate(ctx context.Context, key string, limit int, window time.Duration) bool {
+	// Fail closed: without Redis we refuse auth endpoints rather than unbounded traffic.
 	if s.rdb == nil || key == "" || limit <= 0 {
-		return true
+		return false
 	}
 	n, err := s.rdb.Incr(ctx, key).Result()
 	if err != nil {
 		s.log.Warn("redis rate limit", "err", err)
-		return true
+		return false
 	}
 	if n == 1 {
 		_ = s.rdb.Expire(ctx, key, window).Err()
