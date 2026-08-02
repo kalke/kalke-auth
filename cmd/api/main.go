@@ -42,6 +42,10 @@ func main() {
 		log.Error("migrate", "err", err)
 		os.Exit(1)
 	}
+	if err := db.EnsureAppTables(ctx, pool); err != nil {
+		log.Error("schema", "err", err)
+		os.Exit(1)
+	}
 
 	rdb := httpapi.NewRedis(cfg)
 	defer func() { _ = rdb.Close() }()
