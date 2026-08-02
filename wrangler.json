@@ -3,12 +3,17 @@
 	"name": "kalke-auth",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-10-08",
-	"compatibility_flags": ["nodejs_compat"],
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
 	"observability": {
 		"enabled": true
 	},
 	"routes": [
-		{ "pattern": "auth.kalke.dev", "custom_domain": true }
+		{
+			"pattern": "auth.kalke.dev",
+			"custom_domain": true
+		}
 	],
 	"vars": {
 		"KC_HOSTNAME": "https://auth.kalke.dev",
@@ -21,7 +26,8 @@
 		"DB_SEARCH_PATH": "app",
 		"KC_BFF_CLIENT_ID": "kalke-bff",
 		"CORS_ORIGINS": "https://kalke.dev,https://www.kalke.dev",
-		"COOKIE_DOMAIN": ".kalke.dev"
+		"COOKIE_DOMAIN": ".kalke.dev",
+		"SIGNUP_ENABLED": "false"
 	},
 	"containers": [
 		{
@@ -42,7 +48,9 @@
 	"migrations": [
 		{
 			"tag": "v1",
-			"new_sqlite_classes": ["KeycloakContainer"]
+			"new_sqlite_classes": [
+				"KeycloakContainer"
+			]
 		}
 	]
 }

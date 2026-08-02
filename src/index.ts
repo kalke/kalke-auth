@@ -22,6 +22,7 @@ export interface Env {
 	INTROSPECT_SECRET: string;
 	KC_BFF_CLIENT_ID: string;
 	KC_BFF_CLIENT_SECRET: string;
+	SIGNUP_ENABLED: string;
 	SIGNUP_INVITE_CODE: string;
 	CORS_ORIGINS: string;
 	COOKIE_DOMAIN: string;
@@ -54,7 +55,8 @@ function containerEnvVars(env: Env): Record<string, string> {
 		INTROSPECT_SECRET: env.INTROSPECT_SECRET,
 		KC_BFF_CLIENT_ID: env.KC_BFF_CLIENT_ID || "kalke-bff",
 		KC_BFF_CLIENT_SECRET: env.KC_BFF_CLIENT_SECRET,
-		SIGNUP_INVITE_CODE: env.SIGNUP_INVITE_CODE,
+		SIGNUP_ENABLED: env.SIGNUP_ENABLED || "false",
+		SIGNUP_INVITE_CODE: env.SIGNUP_INVITE_CODE || "",
 		CORS_ORIGINS: env.CORS_ORIGINS || "https://kalke.dev,https://www.kalke.dev",
 		COOKIE_DOMAIN: env.COOKIE_DOMAIN || ".kalke.dev",
 	};
