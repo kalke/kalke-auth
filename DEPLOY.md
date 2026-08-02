@@ -90,6 +90,53 @@ cd ~/kalke-auth && bash deploy/remote-update.sh   # precisa GH_TOKEN
 - Uma micro 24/7 · Neon · Upstash · Mailgun free · Workers Free (sem Containers)
 - Budget alert $1 na AWS
 
+## Keycloak admin — `keycloak.kalke.dev` (Cloudflare Tunnel + Access)
+
+O admin **não** passa pelo Caddy público. Sobe atrás do **Cloudflare Zero Trust** (Tunnel + Access).
+
+### A) Criar o Tunnel (dashboard)
+
+1. [One Dashboard](https://one.dash.cloudflare.com/) → **Networks** → **Tunnels** → **Create tunnel**
+2. Tipo **Cloudflared** → nome `kalke-keycloak`
+3. Copia o **token** (`eyJ...`)
+4. **Public Hostname**:
+   - Subdomain: `keycloak`
+   - Domain: `kalke.dev`
+   - Type: **HTTP**
+   - URL: `auth:8081`  
+     (hostname do serviço Docker na mesma compose network)
+5. Save
+
+Isso cria o DNS `keycloak.kalke.dev` automaticamente (CNAME pro tunnel).
+
+### B) Access (a “VPN” / login)
+
+1. Zero Trust → **Access** → **Applications** → **Add application** → **Self-hosted**
+2. Application domain: `keycloak.kalke.dev` (path opcional: `/`)
+3. Policy: **Allow**
+   - Include → **Emails** → `henriquekalke@icloud.com`
+4. Save
+
+Sem esse login da Cloudflare, ninguém chega no Keycloak.
+
+### C) Token na EC2
+
+```bash
+ssh -i first.pem ubuntu@EIP
+cd ~/kalke-auth
+nano prod.env
+# adiciona:
+# CLOUDFLARE_TUNNEL_TOKEN='eyJ...'
+# KC_HOSTNAME_ADMIN='https://keycloak.kalke.dev'
+
+git pull origin main
+make aws-up
+docker compose -f docker-compose.aws.yml --env-file prod.env --profile tunnel ps
+```
+
+Abre: `https://keycloak.kalke.dev/admin/`  
+→ login Cloudflare (teu e-mail) → login Keycloak (`admin` / senha do `prod.env`).
+
 ## Optional Cloudflare Worker proxy
 
 Só se `DEPLOY_CF_WORKER=true` + `ORIGIN_URL`. Por defeito **não** corre.

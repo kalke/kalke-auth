@@ -1,7 +1,9 @@
 .PHONY: help up down destroy logs restart ps token m2m-token ebank-m2m-token jwks open-admin validate aws-up aws-down aws-logs aws-ps
 
 COMPOSE ?= docker compose
-AWS_COMPOSE ?= docker compose -f docker-compose.aws.yml --env-file prod.env
+AWS_COMPOSE_BASE ?= docker compose -f docker-compose.aws.yml --env-file prod.env
+# Tunnel profile is added automatically by aws-up when CLOUDFLARE_TUNNEL_TOKEN is set.
+AWS_COMPOSE ?= $(AWS_COMPOSE_BASE)
 PUBLIC_PORT ?= 8443
 ISSUER ?= http://localhost:$(PUBLIC_PORT)/realms/kalke
 TOKEN_URL ?= $(ISSUER)/protocol/openid-connect/token
@@ -77,15 +79,22 @@ validate: ## Validate realm JSON (same as CI)
 open-admin: ## Print admin console URL
 	@echo "http://localhost:$(PUBLIC_PORT)/admin/"
 
-aws-up: ## Prod on AWS Free Tier EC2: build + start auth + Caddy (needs prod.env)
-	$(AWS_COMPOSE) up -d --build
-	@echo "Public: https://auth.kalke.dev  (DNS A → this EC2 Elastic IP)"
+aws-up: ## Prod on AWS Free Tier EC2: build + start auth + Caddy (+ tunnel if token set)
+	@if grep -Eq '^CLOUDFLARE_TUNNEL_TOKEN=.+' prod.env 2>/dev/null; then \
+	  $(AWS_COMPOSE_BASE) --profile tunnel up -d --build; \
+	  echo "Public: https://auth.kalke.dev"; \
+	  echo "Keycloak admin (Access): https://keycloak.kalke.dev/admin/"; \
+	else \
+	  $(AWS_COMPOSE_BASE) up -d --build; \
+	  echo "Public: https://auth.kalke.dev"; \
+	  echo "Tip: set CLOUDFLARE_TUNNEL_TOKEN in prod.env for keycloak.kalke.dev"; \
+	fi
 
 aws-down: ## Stop AWS prod stack
-	$(AWS_COMPOSE) down
+	$(AWS_COMPOSE_BASE) --profile tunnel down
 
 aws-logs: ## Follow AWS prod logs
-	$(AWS_COMPOSE) logs -f
+	$(AWS_COMPOSE_BASE) --profile tunnel logs -f
 
 aws-ps: ## Show AWS prod status
-	$(AWS_COMPOSE) ps
+	$(AWS_COMPOSE_BASE) --profile tunnel ps
