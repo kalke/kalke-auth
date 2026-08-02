@@ -51,6 +51,50 @@ if [[ -n "${KC_BOOTSTRAP_ADMIN_USERNAME:-}" && -n "${KC_BOOTSTRAP_ADMIN_PASSWORD
 	echo "setting kalke realm frontendUrl=${FRONTEND_URL}"
 	/opt/keycloak/bin/kcadm.sh update realms/kalke -s "attributes.frontendUrl=${FRONTEND_URL}"
 
+	# Silent first-broker login: create user if new, auto-link if email already exists.
+	# Avoids Keycloak "review profile" / "confirm link" screens in the OAuth redirect.
+	ensure_kalke_first_broker_flow() {
+		local flow='kalke first broker login'
+		local handle="${flow} Handle Existing Account"
+		local execs review confirm verify auto
+
+		if ! /opt/keycloak/bin/kcadm.sh get authentication/flows -r kalke --fields alias --format csv --noquotes \
+			| grep -Fxq "$flow"; then
+			echo "creating ${flow}"
+			/opt/keycloak/bin/kcadm.sh create authentication/flows/first%20broker%20login/copy -r kalke \
+				-s "newName=${flow}"
+		fi
+
+		execs="$(/opt/keycloak/bin/kcadm.sh get "authentication/flows/${flow// /%20}/executions" -r kalke)"
+
+		set_exec_req() {
+			local id="$1" req="$2"
+			[[ -n "$id" ]] || return 0
+			/opt/keycloak/bin/kcadm.sh update "authentication/flows/${flow// /%20}/executions" -r kalke \
+				-b "{\"id\":\"${id}\",\"requirement\":\"${req}\"}" >/dev/null
+		}
+
+		review="$(printf '%s' "$execs" | python3 -c 'import json,sys; print(next((e["id"] for e in json.load(sys.stdin) if e.get("providerId")=="idp-review-profile"), ""))')"
+		confirm="$(printf '%s' "$execs" | python3 -c 'import json,sys; print(next((e["id"] for e in json.load(sys.stdin) if e.get("providerId")=="idp-confirm-link"), ""))')"
+		verify="$(printf '%s' "$execs" | python3 -c 'import json,sys; print(next((e["id"] for e in json.load(sys.stdin) if (e.get("displayName") or "").endswith("Account verification options")), ""))')"
+		set_exec_req "$review" DISABLED
+		set_exec_req "$confirm" DISABLED
+		set_exec_req "$verify" DISABLED
+
+		execs="$(/opt/keycloak/bin/kcadm.sh get "authentication/flows/${flow// /%20}/executions" -r kalke)"
+		auto="$(printf '%s' "$execs" | python3 -c 'import json,sys; print(next((e["id"] for e in json.load(sys.stdin) if e.get("providerId")=="idp-auto-link"), ""))')"
+		if [[ -z "$auto" ]]; then
+			echo "adding idp-auto-link to ${handle}"
+			/opt/keycloak/bin/kcadm.sh create "authentication/flows/${handle// /%20}/executions/execution" -r kalke \
+				-s provider=idp-auto-link >/dev/null
+			execs="$(/opt/keycloak/bin/kcadm.sh get "authentication/flows/${flow// /%20}/executions" -r kalke)"
+			auto="$(printf '%s' "$execs" | python3 -c 'import json,sys; print(next((e["id"] for e in json.load(sys.stdin) if e.get("providerId")=="idp-auto-link"), ""))')"
+		fi
+		set_exec_req "$auto" REQUIRED
+		echo "first broker flow ready: ${flow}"
+	}
+	ensure_kalke_first_broker_flow
+
 	# Ensure Google IdP stays enabled when secrets are present on the host.
 	if [[ -n "${GOOGLE_IDP_CLIENT_ID:-}" && -n "${GOOGLE_IDP_CLIENT_SECRET:-}" ]]; then
 		echo "configuring google identity provider"
@@ -58,6 +102,7 @@ if [[ -n "${KC_BOOTSTRAP_ADMIN_USERNAME:-}" && -n "${KC_BOOTSTRAP_ADMIN_PASSWORD
 			/opt/keycloak/bin/kcadm.sh update identity-provider/instances/google -r kalke \
 				-s enabled=true \
 				-s trustEmail=true \
+				-s 'firstBrokerLoginFlowAlias=kalke first broker login' \
 				-s "config.clientId=${GOOGLE_IDP_CLIENT_ID}" \
 				-s "config.clientSecret=${GOOGLE_IDP_CLIENT_SECRET}" \
 				-s "config.defaultScope=openid profile email" \
@@ -70,6 +115,7 @@ if [[ -n "${KC_BOOTSTRAP_ADMIN_USERNAME:-}" && -n "${KC_BOOTSTRAP_ADMIN_PASSWORD
 				-s displayName=Google \
 				-s trustEmail=true \
 				-s storeToken=false \
+				-s 'firstBrokerLoginFlowAlias=kalke first broker login' \
 				-s "config.clientId=${GOOGLE_IDP_CLIENT_ID}" \
 				-s "config.clientSecret=${GOOGLE_IDP_CLIENT_SECRET}" \
 				-s "config.defaultScope=openid profile email" \
@@ -84,6 +130,7 @@ if [[ -n "${KC_BOOTSTRAP_ADMIN_USERNAME:-}" && -n "${KC_BOOTSTRAP_ADMIN_PASSWORD
 			/opt/keycloak/bin/kcadm.sh update identity-provider/instances/github -r kalke \
 				-s enabled=true \
 				-s trustEmail=true \
+				-s 'firstBrokerLoginFlowAlias=kalke first broker login' \
 				-s "config.clientId=${GITHUB_IDP_CLIENT_ID}" \
 				-s "config.clientSecret=${GITHUB_IDP_CLIENT_SECRET}" \
 				-s "config.defaultScope=user:email read:user" \
@@ -96,6 +143,7 @@ if [[ -n "${KC_BOOTSTRAP_ADMIN_USERNAME:-}" && -n "${KC_BOOTSTRAP_ADMIN_PASSWORD
 				-s displayName=GitHub \
 				-s trustEmail=true \
 				-s storeToken=false \
+				-s 'firstBrokerLoginFlowAlias=kalke first broker login' \
 				-s "config.clientId=${GITHUB_IDP_CLIENT_ID}" \
 				-s "config.clientSecret=${GITHUB_IDP_CLIENT_SECRET}" \
 				-s "config.defaultScope=user:email read:user" \
