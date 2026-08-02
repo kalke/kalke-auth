@@ -79,6 +79,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/auth/signup/resend", s.signupResend)
 	mux.HandleFunc("POST /v1/auth/logout", s.logout)
 	mux.HandleFunc("GET /v1/auth/me", s.me)
+	mux.HandleFunc("POST /v1/auth/password", s.changePassword)
 	mux.HandleFunc("POST /v1/tokens", s.createToken)
 	mux.HandleFunc("GET /v1/tokens", s.listTokens)
 	mux.HandleFunc("DELETE /v1/tokens/{id}", s.revokeToken)
@@ -162,6 +163,54 @@ func (s *Server) issueSession(w http.ResponseWriter, r *http.Request, user keycl
 		"permissions": sess.Permissions,
 	})
 	return nil
+}
+
+func (s *Server) changePassword(w http.ResponseWriter, r *http.Request) {
+	p, err := s.principalFromRequest(r)
+	if err != nil {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	ip := clientIP(r)
+	if !s.allowRate(r.Context(), "password:"+ip, s.cfg.LoginRatePerMinute, time.Minute) {
+		writeErr(w, http.StatusTooManyRequests, "rate limit exceeded")
+		return
+	}
+	var body struct {
+		CurrentPassword string `json:"current_password"`
+		NewPassword     string `json:"new_password"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if msg := passwordChangeValidationError(body.CurrentPassword, body.NewPassword); msg != "" {
+		writeErr(w, http.StatusBadRequest, msg)
+		return
+	}
+	if _, err := s.kc.PasswordLogin(r.Context(), p.UserEmail, body.CurrentPassword); err != nil {
+		writeErr(w, http.StatusUnauthorized, "invalid credentials")
+		return
+	}
+	if err := s.admin.SetPassword(r.Context(), p.UserSub, body.NewPassword); err != nil {
+		s.log.Error("change password", "err", err, "sub", p.UserSub)
+		writeErr(w, http.StatusBadGateway, "password update failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func passwordChangeValidationError(current, next string) string {
+	if current == "" || next == "" {
+		return "current and new password required"
+	}
+	if len(next) < 10 {
+		return "password too short"
+	}
+	if current == next {
+		return "new password must differ"
+	}
+	return ""
 }
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {

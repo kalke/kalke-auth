@@ -6,6 +6,16 @@ OIDC identity provider for Kalke apps, plus a small **Go API** that sits in fron
 - Keycloak stays internal; only discovery + JWKS are proxied publicly.
 - Apps validate JWTs against `https://auth.kalke.dev/realms/kalke`.
 
+### Auth API (cookie session)
+
+| Method | Path | Notes |
+|--------|------|--------|
+| POST | `/v1/auth/login` | email + password → session cookie |
+| POST | `/v1/auth/signup` (+ `/verify`, `/resend`) | OTP signup |
+| GET | `/v1/auth/me` | current session |
+| POST | `/v1/auth/password` | `{current_password,new_password}` (session required; min 10 chars) |
+| POST | `/v1/auth/logout` | clear session |
+
 ## Local
 
 ```bash

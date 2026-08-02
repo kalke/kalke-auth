@@ -164,6 +164,42 @@ func (a *AdminClient) clearRequiredActions(ctx context.Context, tok, userID stri
 	return nil
 }
 
+// SetPassword updates a user's password via the Admin API (non-temporary).
+func (a *AdminClient) SetPassword(ctx context.Context, userID, password string) error {
+	userID = strings.TrimSpace(userID)
+	if userID == "" || password == "" {
+		return fmt.Errorf("user id and password required")
+	}
+	tok, err := a.token(ctx)
+	if err != nil {
+		return err
+	}
+	payload := map[string]any{
+		"type":      "password",
+		"value":     password,
+		"temporary": false,
+	}
+	raw, _ := json.Marshal(payload)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut,
+		a.internalBase+"/admin/realms/kalke/users/"+url.PathEscape(userID)+"/reset-password",
+		bytes.NewReader(raw))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := a.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
+		return fmt.Errorf("set password: %d %s", resp.StatusCode, string(b))
+	}
+	return a.clearRequiredActions(ctx, tok, userID)
+}
+
 // CreateUserWithRole creates a user and assigns a non-privileged realm role.
 func (a *AdminClient) CreateUserWithRole(ctx context.Context, email, password, roleName string) (userID string, err error) {
 	switch strings.TrimSpace(roleName) {
