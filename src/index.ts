@@ -1,7 +1,7 @@
 /**
  * Optional Cloudflare Worker edge for auth.kalke.dev.
  *
- * Preferred prod path: point DNS (A/AAAA) at the Oracle VM and let Caddy terminate TLS.
+ * Preferred prod path: point DNS (A/AAAA) at the AWS EC2 and let Caddy terminate TLS.
  * This Worker is only needed if you want an orange-cloud proxy in front of the VM.
  *
  * Set secret/var ORIGIN_URL to the upstream, e.g. https://AUTH_VM_IP or http://10.0.0.x:8080
@@ -9,7 +9,7 @@
  */
 
 export interface Env {
-	/** Upstream kalke-auth (Caddy or :8080 on the Oracle VM). */
+	/** Upstream kalke-auth (Caddy or :8080 on the AWS EC2). */
 	ORIGIN_URL: string;
 }
 
@@ -18,7 +18,7 @@ export default {
 		const origin = (env.ORIGIN_URL || "").replace(/\/$/, "");
 		if (!origin) {
 			return new Response(
-				"auth origin not configured — set ORIGIN_URL or point DNS at the Oracle VM",
+				"auth origin not configured — set ORIGIN_URL or point DNS at the AWS EC2",
 				{ status: 503 },
 			);
 		}

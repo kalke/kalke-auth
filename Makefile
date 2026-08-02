@@ -1,7 +1,7 @@
-.PHONY: help up down destroy logs restart ps token m2m-token ebank-m2m-token jwks open-admin validate oracle-up oracle-down oracle-logs oracle-ps
+.PHONY: help up down destroy logs restart ps token m2m-token ebank-m2m-token jwks open-admin validate aws-up aws-down aws-logs aws-ps
 
 COMPOSE ?= docker compose
-ORACLE_COMPOSE ?= docker compose -f docker-compose.oracle.yml --env-file prod.env
+AWS_COMPOSE ?= docker compose -f docker-compose.aws.yml --env-file prod.env
 PUBLIC_PORT ?= 8443
 ISSUER ?= http://localhost:$(PUBLIC_PORT)/realms/kalke
 TOKEN_URL ?= $(ISSUER)/protocol/openid-connect/token
@@ -77,15 +77,15 @@ validate: ## Validate realm JSON (same as CI)
 open-admin: ## Print admin console URL
 	@echo "http://localhost:$(PUBLIC_PORT)/admin/"
 
-oracle-up: ## Prod on Oracle VM: build + start auth + Caddy (needs prod.env)
-	$(ORACLE_COMPOSE) up -d --build
-	@echo "Public: https://auth.kalke.dev  (DNS A → this VM)"
+aws-up: ## Prod on AWS Free Tier EC2: build + start auth + Caddy (needs prod.env)
+	$(AWS_COMPOSE) up -d --build
+	@echo "Public: https://auth.kalke.dev  (DNS A → this EC2 Elastic IP)"
 
-oracle-down: ## Stop Oracle prod stack
-	$(ORACLE_COMPOSE) down
+aws-down: ## Stop AWS prod stack
+	$(AWS_COMPOSE) down
 
-oracle-logs: ## Follow Oracle prod logs
-	$(ORACLE_COMPOSE) logs -f
+aws-logs: ## Follow AWS prod logs
+	$(AWS_COMPOSE) logs -f
 
-oracle-ps: ## Show Oracle prod status
-	$(ORACLE_COMPOSE) ps
+aws-ps: ## Show AWS prod status
+	$(AWS_COMPOSE) ps

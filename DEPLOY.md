@@ -1,90 +1,88 @@
 # Deploy
 
-Production auth (**Keycloak + Go BFF**) runs on an **Oracle Cloud Always Free** VM.
-Cloudflare Containers are no longer required (avoids Workers Paid).
+Production auth (**Keycloak + Go BFF**) runs on **AWS Free Tier EC2**.
+No Cloudflare Containers → no Workers Paid.
 
-## Oracle Always Free (recommended)
+> Free Tier is typically **~12 months** of `t2.micro` / `t3.micro` (750 h/mês).
+> Depois disso a AWS cobra — para ficar $0 para sempre precisarias de outro always-free.
 
-### 1. Create the VM
+## AWS Free Tier EC2
 
-In Oracle Cloud Console:
+### 1. Create the instance
 
-1. **Compute → Instances → Create**
-2. Image: **Ubuntu 22.04/24.04**
-3. Shape: **VM.Standard.A1.Flex** (Ampere ARM) — Always Free eligible  
-   Suggested: **2 OCPU / 12 GB RAM** (Keycloak is happier with ≥4 GB)
-4. Networking: assign a **public IPv4**
-5. **VCN security list / NSG**: ingress **22**, **80**, **443** from `0.0.0.0/0` (or lock SSH to your IP)
+EC2 → Launch instance:
 
-### 2. Bootstrap the VM
+| Field | Value |
+|---|---|
+| Name | `kalke-auth` |
+| AMI | **Ubuntu Server 24.04 LTS** (Free tier eligible) |
+| Type | **t3.micro** or **t2.micro** (1 GB RAM) |
+| Key pair | create/download `.pem` |
+| Network | public IP / Elastic IP later |
+| Security group | inbound **22** (your IP), **80**, **443** from `0.0.0.0/0` |
+| Storage | 8–30 GB gp3 (Free Tier allowance) |
 
-SSH in, then:
+Allocate an **Elastic IP** and associate it (IP estável para o DNS).
+
+### 2. Bootstrap
 
 ```bash
+ssh -i your.pem ubuntu@EIP
 git clone https://github.com/kalke/kalke-auth.git
 cd kalke-auth
-bash deploy/oracle-bootstrap.sh
-# log out/in once so your user is in the docker group
+git checkout cursor/aws-auth-f44b   # until this PR is merged
+bash deploy/aws-bootstrap.sh
+# disconnect + reconnect (docker group)
 ```
 
-### 3. Secrets on the VM
+O script cria **2 GB de swap** (obrigatório no micro) + Docker + UFW.
+
+### 3. Secrets
 
 ```bash
 cp prod.env.example prod.env
-nano prod.env   # fill from your private secrets notes
+nano prod.env
 ```
 
-Critical:
+Usa os valores de `Documents/kalke/secrets/prod.env.generated` + Neon/Redis/Mailgun:
 
-- `KC_DB_*` → Neon **direct** host + `currentSchema=keycloak`
-- `DATABASE_URL` → Neon **pooler** (app schema via `DB_SEARCH_PATH=app`)
+- `KC_DB_*` → Neon **direct** + `currentSchema=keycloak`
+- `DATABASE_URL` → Neon **pooler**
 - Redis, session/pepper/introspect, `KC_BFF_CLIENT_SECRET`, Mailgun
-- `COOKIE_DOMAIN=.kalke.dev` (set in compose; keep consistent)
 
 ### 4. Start
 
 ```bash
-docker compose -f docker-compose.oracle.yml --env-file prod.env up -d --build
-docker compose -f docker-compose.oracle.yml logs -f
+make aws-up
+make aws-logs   # first boot can take several minutes on t3.micro
 ```
 
 ### 5. DNS
 
-Cloudflare DNS for `auth.kalke.dev`:
-
-- Type **A** → VM public IP  
-- Proxy status: **DNS only** (grey cloud) until Caddy issues the cert  
-- After HTTPS works you may enable the orange cloud if you want
-
-Smoke:
+Cloudflare → `auth.kalke.dev` **A** → Elastic IP → **DNS only** (grey) until Caddy gets a cert.
 
 ```bash
 curl -fsS https://auth.kalke.dev/realms/kalke/.well-known/openid-configuration | head
-curl -fsS https://auth.kalke.dev/v1/health
+curl -fsS -o /dev/null -w '%{http_code}\n' https://auth.kalke.dev/v1/health
 ```
 
 ### 6. Updates
 
 ```bash
-cd ~/kalke-auth
-git pull
-docker compose -f docker-compose.oracle.yml --env-file prod.env up -d --build
+cd ~/kalke-auth && git pull && make aws-up
 ```
+
+## Stay on free tier
+
+- Keep **one** always-on micro (750 h/mês = 1 instância 24/7)
+- DB = Neon free, Redis = Upstash free, mail = Mailgun free tier
+- `kalke.dev` Worker fica no Cloudflare **Free** (sem Containers)
+- Monitora o billing alarm da AWS (Billing → Budgets → $1 alert)
 
 ## Optional Cloudflare Worker proxy
 
-Only if you want `auth.kalke.dev` on a Worker in front of the VM:
+Default CI **does not** deploy to Cloudflare. Only if you set `DEPLOY_CF_WORKER=true` + `ORIGIN_URL`.
 
-1. Set GitHub secret `ORIGIN_URL` (e.g. `https://auth.kalke.dev` on the VM IP via hosts, or the VM URL)
-2. Set repo variable `DEPLOY_CF_WORKER=true`
-3. Keep `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID`
+## Signup / lockdown
 
-Default CI **does not** deploy to Cloudflare.
-
-## Signup / lockdown (unchanged)
-
-1. `POST /v1/auth/signup` — `{ name, email, password }` → email OTP  
-2. `POST /v1/auth/signup/verify` — creates Keycloak user (**no realm roles**) + session  
-3. `POST /v1/auth/signup/resend` — after 2 minutes  
-
-Admin email allowlist: `ADMIN_EMAILS`. Privileged perms (`admin`, `bank:write`) are stripped unless allowlisted.
+Email OTP signup; admin never via site signup (`ADMIN_EMAILS`). Privileged perms stripped unless allowlisted.
