@@ -49,11 +49,51 @@ jobs:
       - uses: docker/setup-buildx-action@v3
       - run: docker build -t kalke-auth:ci .
 
-  # Production auth runs on AWS Free Tier EC2 (see DEPLOY.md).
-  # Optional: deploy a thin Worker proxy if ORIGIN_URL is set.
+  deploy:
+    name: Deploy to AWS EC2
+    needs: [check, go, docker]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.AWS_EC2_HOST }}
+          username: ${{ secrets.AWS_EC2_USER }}
+          key: ${{ secrets.AWS_EC2_SSH_KEY }}
+          port: 22
+          command_timeout: 40m
+          script_stop: true
+          envs: GH_TOKEN
+          script: |
+            set -euo pipefail
+            chmod +x "${HOME}/kalke-auth/deploy/remote-update.sh" 2>/dev/null || true
+            if [[ -x "${HOME}/kalke-auth/deploy/remote-update.sh" ]]; then
+              bash "${HOME}/kalke-auth/deploy/remote-update.sh"
+            else
+              # First deploy / before script lands on the host: bootstrap update inline.
+              REPO_DIR="${HOME}/kalke-auth"
+              if [[ ! -d "${REPO_DIR}/.git" ]]; then
+                git clone "https://x-access-token:${GH_TOKEN}@github.com/kalke/kalke-auth.git" "${REPO_DIR}"
+              fi
+              cd "${REPO_DIR}"
+              test -f prod.env
+              git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/kalke/kalke-auth.git"
+              git fetch --depth=1 origin main
+              git checkout -B main FETCH_HEAD
+              git remote set-url origin "https://github.com/kalke/kalke-auth.git"
+              make aws-up
+            fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Optional: thin Cloudflare Worker proxy in front of the EC2 origin.
   deploy-worker:
     name: Deploy optional Worker proxy
-    needs: [check, go, docker]
+    needs: [deploy]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_CF_WORKER == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
