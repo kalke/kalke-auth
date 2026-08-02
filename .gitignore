@@ -13,3 +13,4 @@ dist/
 # local production env (never commit)
 prod.env
 .env.prod
+gitleaks
