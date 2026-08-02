@@ -146,6 +146,7 @@ func (s *Server) signupVerify(w http.ResponseWriter, r *http.Request) {
 
 	user, err := s.kc.PasswordLogin(r.Context(), pending.Email, password)
 	if err != nil {
+		s.log.Error("signup password login", "err", err, "email", pending.Email)
 		writeJSON(w, http.StatusCreated, map[string]any{
 			"ok":    true,
 			"email": pending.Email,

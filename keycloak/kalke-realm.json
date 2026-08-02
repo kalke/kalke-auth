@@ -40,19 +40,26 @@
           "temporary": false
         }
       ],
-      "realmRoles": ["extract:write", "bank:write"]
+      "realmRoles": [
+        "extract:write",
+        "bank:write"
+      ]
     },
     {
       "username": "service-account-pde-m2m",
       "enabled": true,
       "serviceAccountClientId": "pde-m2m",
-      "realmRoles": ["extract:write"]
+      "realmRoles": [
+        "extract:write"
+      ]
     },
     {
       "username": "service-account-ebank-m2m",
       "enabled": true,
       "serviceAccountClientId": "ebank-m2m",
-      "realmRoles": ["bank:write"]
+      "realmRoles": [
+        "bank:write"
+      ]
     }
   ],
   "clients": [
@@ -360,6 +367,17 @@
           }
         }
       ]
+    }
+  ],
+  "requiredActions": [
+    {
+      "alias": "VERIFY_PROFILE",
+      "name": "Verify Profile",
+      "providerId": "VERIFY_PROFILE",
+      "enabled": false,
+      "defaultAction": false,
+      "priority": 90,
+      "config": {}
     }
   ]
 }

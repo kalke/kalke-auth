@@ -58,13 +58,14 @@ func (a *AdminClient) token(ctx context.Context) (string, error) {
 }
 
 type createUserBody struct {
-	Username      string              `json:"username"`
-	Email         string              `json:"email"`
-	FirstName     string              `json:"firstName,omitempty"`
-	Enabled       bool                `json:"enabled"`
-	EmailVerified bool                `json:"emailVerified"`
-	Credentials   []map[string]any    `json:"credentials"`
-	Attributes    map[string][]string `json:"attributes,omitempty"`
+	Username        string              `json:"username"`
+	Email           string              `json:"email"`
+	FirstName       string              `json:"firstName,omitempty"`
+	Enabled         bool                `json:"enabled"`
+	EmailVerified   bool                `json:"emailVerified"`
+	RequiredActions []string            `json:"requiredActions"`
+	Credentials     []map[string]any    `json:"credentials"`
+	Attributes      map[string][]string `json:"attributes,omitempty"`
 }
 
 // CreateUser creates a realm user with password and no realm roles.
@@ -75,11 +76,12 @@ func (a *AdminClient) CreateUser(ctx context.Context, name, email, password stri
 		return "", err
 	}
 	payload := createUserBody{
-		Username:      email,
-		Email:         email,
-		FirstName:     strings.TrimSpace(name),
-		Enabled:       true,
-		EmailVerified: true,
+		Username:        email,
+		Email:           email,
+		FirstName:       strings.TrimSpace(name),
+		Enabled:         true,
+		EmailVerified:   true,
+		RequiredActions: []string{}, // OTP already verified; block VERIFY_PROFILE login traps
 		Credentials: []map[string]any{
 			{
 				"type":      "password",
@@ -113,7 +115,53 @@ func (a *AdminClient) CreateUser(ctx context.Context, name, email, password stri
 		return "", fmt.Errorf("create user: missing location")
 	}
 	parts := strings.Split(strings.TrimRight(loc, "/"), "/")
-	return parts[len(parts)-1], nil
+	userID = parts[len(parts)-1]
+	if err := a.clearRequiredActions(ctx, tok, userID); err != nil {
+		return "", err
+	}
+	return userID, nil
+}
+
+func (a *AdminClient) clearRequiredActions(ctx context.Context, tok, userID string) error {
+	getReq, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		a.internalBase+"/admin/realms/kalke/users/"+url.PathEscape(userID), nil)
+	if err != nil {
+		return err
+	}
+	getReq.Header.Set("Authorization", "Bearer "+tok)
+	getResp, err := a.http.Do(getReq)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = getResp.Body.Close() }()
+	rawUser, _ := io.ReadAll(io.LimitReader(getResp.Body, 1<<20))
+	if getResp.StatusCode != http.StatusOK {
+		return fmt.Errorf("get user: %d %s", getResp.StatusCode, string(rawUser))
+	}
+	var user map[string]any
+	if err := json.Unmarshal(rawUser, &user); err != nil {
+		return err
+	}
+	user["requiredActions"] = []string{}
+	user["emailVerified"] = true
+	raw, _ := json.Marshal(user)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut,
+		a.internalBase+"/admin/realms/kalke/users/"+url.PathEscape(userID), bytes.NewReader(raw))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := a.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
+		return fmt.Errorf("clear required actions: %d %s", resp.StatusCode, string(b))
+	}
+	return nil
 }
 
 // CreateUserWithRole creates a user and assigns a non-privileged realm role.
