@@ -76,13 +76,26 @@
     {
       "clientId": "kalke-bff",
       "name": "Kalke auth BFF (server-side)",
-      "description": "Confidential client used only by the Go API for password login. Secret set at container boot.",
+      "description": "Confidential client for password login and OAuth code exchange. Secret set at container boot.",
       "enabled": true,
       "publicClient": false,
-      "standardFlowEnabled": false,
+      "standardFlowEnabled": true,
       "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": false,
       "protocol": "openid-connect",
+      "rootUrl": "https://auth.kalke.dev",
+      "baseUrl": "https://auth.kalke.dev",
+      "redirectUris": [
+        "https://auth.kalke.dev/v1/auth/callback"
+      ],
+      "webOrigins": [
+        "https://auth.kalke.dev",
+        "https://kalke.dev",
+        "https://www.kalke.dev"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
       "fullScopeAllowed": true,
       "protocolMappers": [
         {

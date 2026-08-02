@@ -79,6 +79,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/health", s.health)
 	mux.HandleFunc("GET /health", s.health)
 	mux.HandleFunc("POST /v1/auth/login", s.login)
+	mux.HandleFunc("GET /v1/auth/oauth/{provider}", s.oauthStart)
+	mux.HandleFunc("GET /v1/auth/callback", s.oauthCallback)
 	mux.HandleFunc("POST /v1/auth/login/email", s.passwordlessStart)
 	mux.HandleFunc("POST /v1/auth/login/email/verify", s.passwordlessVerify)
 	mux.HandleFunc("POST /v1/auth/login/email/resend", s.passwordlessResend)
@@ -135,13 +137,25 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) issueSession(w http.ResponseWriter, r *http.Request, user keycloak.UserInfo, fallbackEmail string) error {
-	raw, err := security.RandomToken()
+	sess, err := s.createSession(w, r, user, fallbackEmail)
 	if err != nil {
 		return err
 	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"email":       sess.UserEmail,
+		"permissions": sess.Permissions,
+	})
+	return nil
+}
+
+func (s *Server) createSession(w http.ResponseWriter, r *http.Request, user keycloak.UserInfo, fallbackEmail string) (store.Session, error) {
+	raw, err := security.RandomToken()
+	if err != nil {
+		return store.Session{}, err
+	}
 	hash, err := security.HashSecret(s.cfg.TokenPepper, raw)
 	if err != nil {
-		return err
+		return store.Session{}, err
 	}
 	email := user.Email
 	if email == "" {
@@ -157,7 +171,7 @@ func (s *Server) issueSession(w http.ResponseWriter, r *http.Request, user keycl
 		ExpiresAt:   time.Now().UTC().Add(s.cfg.SessionTTL),
 	}
 	if err := s.store.CreateSession(r.Context(), sess); err != nil {
-		return err
+		return store.Session{}, err
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
@@ -169,11 +183,7 @@ func (s *Server) issueSession(w http.ResponseWriter, r *http.Request, user keycl
 		SameSite: http.SameSiteNoneMode,
 		MaxAge:   int(s.cfg.SessionTTL.Seconds()),
 	})
-	writeJSON(w, http.StatusOK, map[string]any{
-		"email":       sess.UserEmail,
-		"permissions": sess.Permissions,
-	})
-	return nil
+	return sess, nil
 }
 
 func (s *Server) changePassword(w http.ResponseWriter, r *http.Request) {

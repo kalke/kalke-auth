@@ -36,7 +36,13 @@ if [[ -n "${KC_BOOTSTRAP_ADMIN_USERNAME:-}" && -n "${KC_BOOTSTRAP_ADMIN_PASSWORD
 		--password "$KC_BOOTSTRAP_ADMIN_PASSWORD"
 	CID="$(/opt/keycloak/bin/kcadm.sh get clients -r kalke -q clientId=kalke-bff --fields id --format csv --noquotes | head -n1)"
 	if [[ -n "$CID" && "$CID" != "id" ]]; then
-		/opt/keycloak/bin/kcadm.sh update "clients/${CID}" -r kalke -s "secret=${KC_BFF_CLIENT_SECRET}"
+		/opt/keycloak/bin/kcadm.sh update "clients/${CID}" -r kalke \
+			-s "secret=${KC_BFF_CLIENT_SECRET}" \
+			-s "standardFlowEnabled=true" \
+			-s "directAccessGrantsEnabled=true" \
+			-s 'redirectUris=["https://auth.kalke.dev/v1/auth/callback"]' \
+			-s 'webOrigins=["https://auth.kalke.dev","https://kalke.dev","https://www.kalke.dev"]' \
+			-s 'attributes.pkce.code.challenge.method=S256'
 	else
 		echo "kalke-bff client not found" >&2
 		exit 1
@@ -45,6 +51,33 @@ if [[ -n "${KC_BOOTSTRAP_ADMIN_USERNAME:-}" && -n "${KC_BOOTSTRAP_ADMIN_PASSWORD
 	FRONTEND_URL="${KC_REALM_FRONTEND_URL:-https://auth.kalke.dev}"
 	echo "setting kalke realm frontendUrl=${FRONTEND_URL}"
 	/opt/keycloak/bin/kcadm.sh update realms/kalke -s "attributes.frontendUrl=${FRONTEND_URL}"
+
+	# Ensure Google IdP stays enabled when secrets are present on the host.
+	if [[ -n "${GOOGLE_IDP_CLIENT_ID:-}" && -n "${GOOGLE_IDP_CLIENT_SECRET:-}" ]]; then
+		echo "configuring google identity provider"
+		if /opt/keycloak/bin/kcadm.sh get identity-provider/instances/google -r kalke >/dev/null 2>&1; then
+			/opt/keycloak/bin/kcadm.sh update identity-provider/instances/google -r kalke \
+				-s enabled=true \
+				-s trustEmail=true \
+				-s "config.clientId=${GOOGLE_IDP_CLIENT_ID}" \
+				-s "config.clientSecret=${GOOGLE_IDP_CLIENT_SECRET}" \
+				-s "config.defaultScope=openid profile email" \
+				-s "config.syncMode=IMPORT"
+		else
+			/opt/keycloak/bin/kcadm.sh create identity-provider/instances -r kalke \
+				-s alias=google \
+				-s providerId=google \
+				-s enabled=true \
+				-s displayName=Google \
+				-s trustEmail=true \
+				-s storeToken=false \
+				-s "config.clientId=${GOOGLE_IDP_CLIENT_ID}" \
+				-s "config.clientSecret=${GOOGLE_IDP_CLIENT_SECRET}" \
+				-s "config.defaultScope=openid profile email" \
+				-s "config.syncMode=IMPORT" \
+				-s "config.useJwksUrl=true"
+		fi
+	fi
 fi
 
 export KC_INTERNAL_URL="${KC_INTERNAL_URL:-http://127.0.0.1:${KC_HTTP_PORT}}"

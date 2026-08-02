@@ -37,6 +37,8 @@ type Config struct {
 	LoginRatePerMinute  int
 	SignupRatePerMinute int
 	SignupRatePerHour   int
+	OAuthRedirectURI    string
+	OAuthSuccessURL     string
 }
 
 func Load() (Config, error) {
@@ -123,6 +125,8 @@ func Load() (Config, error) {
 		LoginRatePerMinute:  loginRate,
 		SignupRatePerMinute: signupRateMin,
 		SignupRatePerHour:   signupRateHour,
+		OAuthRedirectURI:    getenv("OAUTH_REDIRECT_URI", "https://auth.kalke.dev/v1/auth/callback"),
+		OAuthSuccessURL:     getenv("OAUTH_SUCCESS_URL", "https://kalke.dev/playground"),
 	}, nil
 }
 

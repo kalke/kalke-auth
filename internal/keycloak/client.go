@@ -59,7 +59,40 @@ func (c *Client) PasswordLogin(ctx context.Context, username, password string) (
 	form.Set("username", username)
 	form.Set("password", password)
 	form.Set("scope", "openid profile email")
+	return c.tokenUserInfo(ctx, form)
+}
 
+// AuthorizationURL builds the browser redirect into Keycloak (optionally with IdP hint).
+func (c *Client) AuthorizationURL(redirectURI, state, codeChallenge, idpHint string) string {
+	q := url.Values{}
+	q.Set("client_id", c.clientID)
+	q.Set("response_type", "code")
+	q.Set("scope", "openid profile email")
+	q.Set("redirect_uri", redirectURI)
+	q.Set("state", state)
+	q.Set("code_challenge", codeChallenge)
+	q.Set("code_challenge_method", "S256")
+	if idpHint != "" {
+		q.Set("kc_idp_hint", idpHint)
+	}
+	return c.publicIssuer + "/protocol/openid-connect/auth?" + q.Encode()
+}
+
+// ExchangeCode swaps an authorization code (+ PKCE verifier) for user claims.
+func (c *Client) ExchangeCode(ctx context.Context, code, redirectURI, codeVerifier string) (UserInfo, error) {
+	form := url.Values{}
+	form.Set("grant_type", "authorization_code")
+	form.Set("client_id", c.clientID)
+	form.Set("client_secret", c.clientSecret)
+	form.Set("code", code)
+	form.Set("redirect_uri", redirectURI)
+	if codeVerifier != "" {
+		form.Set("code_verifier", codeVerifier)
+	}
+	return c.tokenUserInfo(ctx, form)
+}
+
+func (c *Client) tokenUserInfo(ctx context.Context, form url.Values) (UserInfo, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		c.internalBase+"/realms/kalke/protocol/openid-connect/token",
 		strings.NewReader(form.Encode()))
@@ -75,7 +108,7 @@ func (c *Client) PasswordLogin(ctx context.Context, username, password string) (
 	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode != http.StatusOK {
-		return UserInfo{}, fmt.Errorf("keycloak login failed: %d", resp.StatusCode)
+		return UserInfo{}, fmt.Errorf("keycloak token failed: %d", resp.StatusCode)
 	}
 	var tr TokenResponse
 	if err := json.Unmarshal(body, &tr); err != nil {
