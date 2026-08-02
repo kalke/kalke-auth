@@ -19,20 +19,24 @@ import (
 
 	"github.com/kalke/kalke-auth/internal/config"
 	"github.com/kalke/kalke-auth/internal/keycloak"
+	"github.com/kalke/kalke-auth/internal/mail"
 	"github.com/kalke/kalke-auth/internal/security"
+	"github.com/kalke/kalke-auth/internal/signup"
 	"github.com/kalke/kalke-auth/internal/store"
 )
 
 const sessionCookie = "kalke_session"
 
 type Server struct {
-	cfg   config.Config
-	store *store.Store
-	kc    *keycloak.Client
-	admin *keycloak.AdminClient
-	rdb   *redis.Client
-	proxy *httputil.ReverseProxy
-	log   *slog.Logger
+	cfg     config.Config
+	store   *store.Store
+	kc      *keycloak.Client
+	admin   *keycloak.AdminClient
+	rdb     *redis.Client
+	pending *signup.Store
+	mailer  mail.Mailer
+	proxy   *httputil.ReverseProxy
+	log     *slog.Logger
 }
 
 type sessionPrincipal struct {
@@ -42,14 +46,27 @@ type sessionPrincipal struct {
 	Permissions []string
 }
 
-func New(cfg config.Config, st *store.Store, kc *keycloak.Client, admin *keycloak.AdminClient, rdb *redis.Client, log *slog.Logger) *Server {
+func New(cfg config.Config, st *store.Store, kc *keycloak.Client, admin *keycloak.AdminClient, rdb *redis.Client, mailer mail.Mailer, log *slog.Logger) *Server {
 	target, _ := url.Parse(cfg.KCInternalURL)
 	proxy := httputil.NewSingleHostReverseProxy(target)
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 		slog.Error("keycloak proxy", "err", err)
 		http.Error(w, "bad gateway", http.StatusBadGateway)
 	}
-	return &Server{cfg: cfg, store: st, kc: kc, admin: admin, rdb: rdb, proxy: proxy, log: log}
+	if mailer == nil {
+		mailer = mail.LogMailer{Log: log}
+	}
+	return &Server{
+		cfg:     cfg,
+		store:   st,
+		kc:      kc,
+		admin:   admin,
+		rdb:     rdb,
+		pending: signup.NewStore(rdb, cfg.TokenPepper),
+		mailer:  mailer,
+		proxy:   proxy,
+		log:     log,
+	}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -57,7 +74,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/health", s.health)
 	mux.HandleFunc("GET /health", s.health)
 	mux.HandleFunc("POST /v1/auth/login", s.login)
-	mux.HandleFunc("POST /v1/auth/signup", s.signup)
+	mux.HandleFunc("POST /v1/auth/signup", s.signupStart)
+	mux.HandleFunc("POST /v1/auth/signup/verify", s.signupVerify)
+	mux.HandleFunc("POST /v1/auth/signup/resend", s.signupResend)
 	mux.HandleFunc("POST /v1/auth/logout", s.logout)
 	mux.HandleFunc("GET /v1/auth/me", s.me)
 	mux.HandleFunc("POST /v1/tokens", s.createToken)
@@ -103,58 +122,6 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) signup(w http.ResponseWriter, r *http.Request) {
-	ip := clientIP(r)
-	if !s.allowRate(r.Context(), "signup:"+ip, s.cfg.SignupRatePerMinute, time.Minute) ||
-		!s.allowRate(r.Context(), "signup-hour:"+ip, s.cfg.SignupRatePerHour, time.Hour) {
-		writeErr(w, http.StatusTooManyRequests, "rate limit exceeded")
-		return
-	}
-	var body struct {
-		Email      string `json:"email"`
-		Password   string `json:"password"`
-		InviteCode string `json:"invite_code"`
-	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body); err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid body")
-		return
-	}
-	body.Email = strings.TrimSpace(strings.ToLower(body.Email))
-	body.InviteCode = strings.TrimSpace(body.InviteCode)
-	if body.Email == "" || body.Password == "" || body.InviteCode == "" {
-		writeErr(w, http.StatusBadRequest, "email, password and invite_code required")
-		return
-	}
-	if len(body.Password) < 10 {
-		writeErr(w, http.StatusBadRequest, "password too short")
-		return
-	}
-	if !secureCompare(body.InviteCode, s.cfg.SignupInviteCode) {
-		// same response shape as bad credentials — don't confirm code validity
-		writeErr(w, http.StatusUnauthorized, "invalid signup")
-		return
-	}
-	if _, err := s.admin.CreateUserWithRole(r.Context(), body.Email, body.Password, "extract:write"); err != nil {
-		if strings.Contains(err.Error(), "user exists") {
-			writeErr(w, http.StatusConflict, "user exists")
-			return
-		}
-		s.log.Error("signup", "err", err)
-		writeErr(w, http.StatusBadGateway, "signup failed")
-		return
-	}
-	user, err := s.kc.PasswordLogin(r.Context(), body.Email, body.Password)
-	if err != nil {
-		writeErr(w, http.StatusCreated, "account created; sign in")
-		return
-	}
-	if err := s.issueSession(w, r, user, body.Email); err != nil {
-		s.log.Error("signup session", "err", err)
-		writeJSON(w, http.StatusCreated, map[string]any{"ok": true, "email": body.Email})
-		return
-	}
-}
-
 func (s *Server) issueSession(w http.ResponseWriter, r *http.Request, user keycloak.UserInfo, fallbackEmail string) error {
 	raw, err := security.RandomToken()
 	if err != nil {
@@ -164,17 +131,18 @@ func (s *Server) issueSession(w http.ResponseWriter, r *http.Request, user keycl
 	if err != nil {
 		return err
 	}
+	email := user.Email
+	if email == "" {
+		email = fallbackEmail
+	}
 	id := uuid.New()
 	sess := store.Session{
 		ID:          id,
 		UserSub:     user.Subject,
-		UserEmail:   user.Email,
-		Permissions: user.Permissions,
+		UserEmail:   email,
+		Permissions: s.effectivePermissions(email, user.Permissions),
 		TokenHash:   hash,
 		ExpiresAt:   time.Now().UTC().Add(s.cfg.SessionTTL),
-	}
-	if sess.UserEmail == "" {
-		sess.UserEmail = fallbackEmail
 	}
 	if err := s.store.CreateSession(r.Context(), sess); err != nil {
 		return err
@@ -221,7 +189,7 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"email":       p.UserEmail,
-		"permissions": p.Permissions,
+		"permissions": s.effectivePermissions(p.UserEmail, p.Permissions),
 	})
 }
 
@@ -255,7 +223,7 @@ func (s *Server) createToken(w http.ResponseWriter, r *http.Request) {
 		Name:        body.Name,
 		TokenPrefix: prefix,
 		TokenHash:   hash,
-		Permissions: p.Permissions,
+		Permissions: s.effectivePermissions(p.UserEmail, p.Permissions),
 	}
 	if err := s.store.CreateAPIToken(r.Context(), tok); err != nil {
 		s.log.Error("create token", "err", err)
@@ -351,7 +319,7 @@ func (s *Server) introspect(w http.ResponseWriter, r *http.Request) {
 		"active":      true,
 		"sub":         row.UserSub,
 		"email":       row.UserEmail,
-		"permissions": row.Permissions,
+		"permissions": s.effectivePermissions(row.UserEmail, row.Permissions),
 	})
 }
 
@@ -364,14 +332,13 @@ func (s *Server) oidcProxy(w http.ResponseWriter, r *http.Request) {
 }
 
 func isPublicOIDCPath(path string) bool {
+	// Only discovery + JWKS are public. Token/admin/theme/resources stay internal.
 	p := strings.ToLower(path)
 	switch {
 	case p == "/realms/kalke/.well-known/openid-configuration":
 		return true
 	case strings.HasPrefix(p, "/realms/kalke/protocol/openid-connect/certs"):
 		return true
-	case strings.HasPrefix(p, "/resources/"):
-		return true // Keycloak may reference theme assets from discovery pages; keep minimal
 	default:
 		return false
 	}
@@ -406,13 +373,14 @@ func (s *Server) principalFromRequest(r *http.Request) (sessionPrincipal, error)
 }
 
 func (s *Server) allowRate(ctx context.Context, key string, limit int, window time.Duration) bool {
+	// Fail closed: without Redis we refuse auth endpoints rather than unbounded traffic.
 	if s.rdb == nil || key == "" || limit <= 0 {
-		return true
+		return false
 	}
 	n, err := s.rdb.Incr(ctx, key).Result()
 	if err != nil {
 		s.log.Warn("redis rate limit", "err", err)
-		return true
+		return false
 	}
 	if n == 1 {
 		_ = s.rdb.Expire(ctx, key, window).Err()

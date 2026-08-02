@@ -13,6 +13,7 @@ import (
 	"github.com/kalke/kalke-auth/internal/db"
 	"github.com/kalke/kalke-auth/internal/httpapi"
 	"github.com/kalke/kalke-auth/internal/keycloak"
+	"github.com/kalke/kalke-auth/internal/mail"
 	"github.com/kalke/kalke-auth/internal/migrate"
 	"github.com/kalke/kalke-auth/internal/store"
 )
@@ -45,9 +46,10 @@ func main() {
 	rdb := httpapi.NewRedis(cfg)
 	defer func() { _ = rdb.Close() }()
 
+	mailer := newMailer(cfg, log)
 	kc := keycloak.New(cfg.KCInternalURL, cfg.KCPublicIssuer, cfg.BFFClientID, cfg.BFFClientSecret)
 	admin := keycloak.NewAdmin(cfg.KCInternalURL, cfg.KCAdminUser, cfg.KCAdminPassword)
-	srv := httpapi.New(cfg, store.New(pool), kc, admin, rdb, log)
+	srv := httpapi.New(cfg, store.New(pool), kc, admin, rdb, mailer, log)
 
 	httpServer := &http.Server{
 		Addr:              cfg.HTTPAddr,
@@ -70,4 +72,17 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = httpServer.Shutdown(shutdownCtx)
+}
+
+func newMailer(cfg config.Config, log *slog.Logger) mail.Mailer {
+	if cfg.MailDevLog {
+		return mail.LogMailer{Log: log}
+	}
+	if cfg.MailgunAPIKey != "" {
+		return mail.NewMailgun(cfg.MailgunAPIKey, cfg.MailgunDomain, cfg.MailFrom)
+	}
+	if cfg.ResendAPIKey != "" {
+		return mail.NewResend(cfg.ResendAPIKey, cfg.MailFrom)
+	}
+	return mail.LogMailer{Log: log}
 }

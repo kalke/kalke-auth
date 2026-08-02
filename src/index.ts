@@ -23,7 +23,11 @@ export interface Env {
 	KC_BFF_CLIENT_ID: string;
 	KC_BFF_CLIENT_SECRET: string;
 	SIGNUP_ENABLED: string;
-	SIGNUP_INVITE_CODE: string;
+	ADMIN_EMAILS: string;
+	MAIL_FROM: string;
+	MAILGUN_API_KEY: string;
+	MAILGUN_DOMAIN: string;
+	RESEND_API_KEY: string;
 	CORS_ORIGINS: string;
 	COOKIE_DOMAIN: string;
 }
@@ -56,7 +60,11 @@ function containerEnvVars(env: Env): Record<string, string> {
 		KC_BFF_CLIENT_ID: env.KC_BFF_CLIENT_ID || "kalke-bff",
 		KC_BFF_CLIENT_SECRET: env.KC_BFF_CLIENT_SECRET,
 		SIGNUP_ENABLED: env.SIGNUP_ENABLED || "true",
-		SIGNUP_INVITE_CODE: env.SIGNUP_INVITE_CODE || "",
+		ADMIN_EMAILS: env.ADMIN_EMAILS || "henriquekalke@icloud.com",
+		MAIL_FROM: env.MAIL_FROM || "kalke <noreply@kalke.dev>",
+		MAILGUN_API_KEY: env.MAILGUN_API_KEY || "",
+		MAILGUN_DOMAIN: env.MAILGUN_DOMAIN || "",
+		RESEND_API_KEY: env.RESEND_API_KEY || "",
 		CORS_ORIGINS: env.CORS_ORIGINS || "https://kalke.dev,https://www.kalke.dev",
 		COOKIE_DOMAIN: env.COOKIE_DOMAIN || ".kalke.dev",
 	};

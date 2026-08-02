@@ -60,14 +60,16 @@ func (a *AdminClient) token(ctx context.Context) (string, error) {
 type createUserBody struct {
 	Username      string              `json:"username"`
 	Email         string              `json:"email"`
+	FirstName     string              `json:"firstName,omitempty"`
 	Enabled       bool                `json:"enabled"`
 	EmailVerified bool                `json:"emailVerified"`
 	Credentials   []map[string]any    `json:"credentials"`
 	Attributes    map[string][]string `json:"attributes,omitempty"`
 }
 
-// CreateUserWithRole creates a realm user, sets password, and assigns a realm role.
-func (a *AdminClient) CreateUserWithRole(ctx context.Context, email, password, roleName string) (userID string, err error) {
+// CreateUser creates a realm user with password and no realm roles.
+// Used after email OTP verification — never grant admin via public signup.
+func (a *AdminClient) CreateUser(ctx context.Context, name, email, password string) (userID string, err error) {
 	tok, err := a.token(ctx)
 	if err != nil {
 		return "", err
@@ -75,6 +77,7 @@ func (a *AdminClient) CreateUserWithRole(ctx context.Context, email, password, r
 	payload := createUserBody{
 		Username:      email,
 		Email:         email,
+		FirstName:     strings.TrimSpace(name),
 		Enabled:       true,
 		EmailVerified: true,
 		Credentials: []map[string]any{
@@ -110,8 +113,23 @@ func (a *AdminClient) CreateUserWithRole(ctx context.Context, email, password, r
 		return "", fmt.Errorf("create user: missing location")
 	}
 	parts := strings.Split(strings.TrimRight(loc, "/"), "/")
-	userID = parts[len(parts)-1]
+	return parts[len(parts)-1], nil
+}
 
+// CreateUserWithRole creates a user and assigns a non-privileged realm role.
+func (a *AdminClient) CreateUserWithRole(ctx context.Context, email, password, roleName string) (userID string, err error) {
+	switch strings.TrimSpace(roleName) {
+	case "admin", "bank:write":
+		return "", fmt.Errorf("role %q cannot be assigned via API", roleName)
+	}
+	userID, err = a.CreateUser(ctx, "", email, password)
+	if err != nil {
+		return "", err
+	}
+	tok, err := a.token(ctx)
+	if err != nil {
+		return userID, err
+	}
 	if err := a.assignRealmRole(ctx, tok, userID, roleName); err != nil {
 		return userID, err
 	}
