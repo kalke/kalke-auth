@@ -16,6 +16,33 @@ services:
     networks:
       - kalke-auth
 
+  # App DB for sessions / PATs (separate from Keycloak).
+  app-db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: kalke
+      POSTGRES_PASSWORD: kalke
+      POSTGRES_DB: kalke
+    volumes:
+      - app_pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kalke -d kalke"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+    networks:
+      - kalke-auth
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - kalke-auth
+
   keycloak:
     image: quay.io/keycloak/keycloak:26.3
     command: ["start-dev", "--import-realm"]
@@ -35,7 +62,8 @@ services:
       KC_PROXY_HEADERS: xforwarded
       KC_HEALTH_ENABLED: "true"
     volumes:
-      - ./keycloak:/opt/keycloak/data/import:ro
+      # Dev realm only — do not mount kalke-realm.prod.json here.
+      - ./keycloak/kalke-realm.json:/opt/keycloak/data/import/kalke-realm.json:ro
     networks:
       - kalke-auth
     healthcheck:
@@ -44,6 +72,57 @@ services:
       timeout: 5s
       retries: 30
       start_period: 90s
+
+  bff:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    image: kalke-auth-bff:local
+    depends_on:
+      app-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    env_file:
+      - path: local.env
+        required: false
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://kalke:kalke@app-db:5432/kalke?sslmode=disable}
+      DB_SEARCH_PATH: ${DB_SEARCH_PATH:-app}
+      REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
+      REDIS_TLS: ${REDIS_TLS:-false}
+      SESSION_SECRET: ${SESSION_SECRET:-local-dev-session-secret-do-not-use-in-prod}
+      TOKEN_HASH_PEPPER: ${TOKEN_HASH_PEPPER:-local-dev-token-pepper-do-not-use-in-prod}
+      INTROSPECT_SECRET: ${INTROSPECT_SECRET:-local-dev-introspect-secret}
+      KC_BFF_CLIENT_ID: ${KC_BFF_CLIENT_ID:-kalke-bff}
+      KC_BFF_CLIENT_SECRET: ${KC_BFF_CLIENT_SECRET:-kalke-bff-dev-secret}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_ADMIN_USER:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD:-admin}
+      KC_INTERNAL_URL: ${KC_INTERNAL_URL:-http://keycloak:8080}
+      KC_PUBLIC_ISSUER: ${KC_PUBLIC_ISSUER:-http://localhost:8443/realms/kalke}
+      HTTP_ADDR: ":8080"
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+      COOKIE_DOMAIN: ""
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      COOKIE_SAMESITE: ${COOKIE_SAMESITE:-lax}
+      SIGNUP_ENABLED: ${SIGNUP_ENABLED:-true}
+      MAIL_DEV_LOG: ${MAIL_DEV_LOG:-true}
+      MAIL_FROM: ${MAIL_FROM:-kalke <noreply@localhost>}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-demo@kalke.local}
+      OAUTH_REDIRECT_URI: ${OAUTH_REDIRECT_URI:-http://localhost:8090/v1/auth/callback}
+      OAUTH_SUCCESS_URL: ${OAUTH_SUCCESS_URL:-http://localhost:5173/playground}
+    ports:
+      - "${BFF_BIND:-127.0.0.1}:${BFF_PORT:-8090}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
+    networks:
+      - kalke-auth
 
   caddy:
     image: caddy:2.10-alpine
@@ -59,6 +138,7 @@ services:
 
 volumes:
   kc_pgdata:
+  app_pgdata:
 
 networks:
   kalke-auth:

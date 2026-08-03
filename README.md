@@ -20,10 +20,23 @@ OIDC identity provider for Kalke apps, plus a small **Go API** that sits in fron
 
 ```bash
 cp .env.example .env
+cp local.env.example local.env   # or: make setup
 make up
 make jwks
 make token
 ```
+
+Local stack:
+
+| Service | URL |
+|---------|-----|
+| Auth BFF (`/v1/*`) | http://localhost:8090 |
+| OIDC issuer (Caddy → Keycloak) | http://localhost:8443/realms/kalke |
+| Demo user | `demo@kalke.local` / `DemoPass123!` |
+
+Cookies are host-only + `SameSite=Lax` + non-Secure so the Vite app on `:5173` can use session auth over HTTP.
+
+If you change the realm JSON after the first boot, wipe volumes: `make destroy && make up`.
 
 ## Production (AWS Free Tier)
 

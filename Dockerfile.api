@@ -1,0 +1,17 @@
+# Go BFF only (local compose). Prod uses the combined Keycloak+API image.
+FROM golang:1.25-bookworm AS api-build
+WORKDIR /src
+ENV GOTOOLCHAIN=auto
+COPY go.mod go.sum ./
+RUN go mod download
+COPY cmd ./cmd
+COPY internal ./internal
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api
+
+FROM alpine:3.21
+RUN apk add --no-cache ca-certificates wget \
+	&& adduser -D -H -u 65532 nonroot
+COPY --from=api-build /out/api /api
+EXPOSE 8080
+USER nonroot
+ENTRYPOINT ["/api"]

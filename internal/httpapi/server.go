@@ -173,16 +173,7 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request, user keyc
 	if err := s.store.CreateSession(r.Context(), sess); err != nil {
 		return store.Session{}, err
 	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     sessionCookie,
-		Value:    id.String() + "." + raw,
-		Path:     "/",
-		Domain:   s.cfg.CookieDomain,
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteNoneMode,
-		MaxAge:   int(s.cfg.SessionTTL.Seconds()),
-	})
+	s.setSessionCookie(w, id.String()+"."+raw, int(s.cfg.SessionTTL.Seconds()))
 	return sess, nil
 }
 
@@ -238,17 +229,32 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	if p, err := s.principalFromRequest(r); err == nil {
 		_ = s.store.DeleteSession(r.Context(), p.SessionID)
 	}
+	s.setSessionCookie(w, "", -1)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) setSessionCookie(w http.ResponseWriter, value string, maxAge int) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
-		Value:    "",
+		Value:    value,
 		Path:     "/",
 		Domain:   s.cfg.CookieDomain,
 		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteNoneMode,
-		MaxAge:   -1,
+		Secure:   s.cfg.CookieSecure,
+		SameSite: cookieSameSite(s.cfg.CookieSameSite),
+		MaxAge:   maxAge,
 	})
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func cookieSameSite(mode string) http.SameSite {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "lax":
+		return http.SameSiteLaxMode
+	case "strict":
+		return http.SameSiteStrictMode
+	default:
+		return http.SameSiteNoneMode
+	}
 }
 
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {

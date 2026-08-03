@@ -200,6 +200,75 @@
       ]
     },
     {
+      "clientId": "kalke-bff",
+      "name": "Kalke auth BFF (local)",
+      "description": "Confidential client for password login and OAuth. Local secret only — never reuse in prod.",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "kalke-bff-dev-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "protocol": "openid-connect",
+      "rootUrl": "http://localhost:8090",
+      "baseUrl": "http://localhost:8090",
+      "redirectUris": [
+        "http://localhost:8090/v1/auth/callback",
+        "http://127.0.0.1:8090/v1/auth/callback"
+      ],
+      "webOrigins": [
+        "http://localhost:8090",
+        "http://127.0.0.1:8090",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "fullScopeAllowed": true,
+      "protocolMappers": [
+        {
+          "name": "audience-pde",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "personal-document-extractor",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "permissions",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "permissions",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "email",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "email",
+            "claim.name": "email",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
       "clientId": "kalke-cli",
       "name": "Kalke CLI / smoke (dev)",
       "description": "Confidential client with password grant for local smoke tests only",

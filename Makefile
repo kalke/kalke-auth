@@ -1,13 +1,15 @@
-.PHONY: help up down destroy logs restart ps token m2m-token ebank-m2m-token jwks open-admin validate aws-up aws-down aws-logs aws-ps
+.PHONY: help up down destroy logs restart ps token m2m-token ebank-m2m-token jwks open-admin validate setup aws-up aws-down aws-logs aws-ps
 
 COMPOSE ?= docker compose
 AWS_COMPOSE_BASE ?= docker compose -f docker-compose.aws.yml --env-file prod.env
 # Tunnel profile is added automatically by aws-up when CLOUDFLARE_TUNNEL_TOKEN is set.
 AWS_COMPOSE ?= $(AWS_COMPOSE_BASE)
 PUBLIC_PORT ?= 8443
+BFF_PORT ?= 8090
 ISSUER ?= http://localhost:$(PUBLIC_PORT)/realms/kalke
 TOKEN_URL ?= $(ISSUER)/protocol/openid-connect/token
 JWKS_URL ?= $(ISSUER)/protocol/openid-connect/certs
+BFF_URL ?= http://localhost:$(BFF_PORT)
 
 # LOCAL COMPOSE ONLY — never reuse these values on auth.kalke.dev.
 DEMO_USER ?= demo@kalke.local
@@ -22,16 +24,23 @@ EBANK_M2M_SECRET ?= ebank-m2m-dev-secret
 help: ## Show targets
 	@grep -E '^[a-zA-Z_-]+:.*?##' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?##"}; {printf "  %-14s %s\n", $$1, $$2}'
 
-up: ## Start Postgres + Keycloak (internal) + Caddy (public)
-	$(COMPOSE) up -d --build
+setup: ## Create .env + local.env from examples if missing
+	@if [ ! -f .env ]; then cp .env.example .env; echo "Created .env"; else echo ".env already exists"; fi
+	@if [ ! -f local.env ]; then cp local.env.example local.env; echo "Created local.env"; else echo "local.env already exists"; fi
+
+up: setup ## Start Keycloak + Caddy + BFF + Postgres + Redis
+	$(COMPOSE) up -d --build --wait
 	@echo ""
 	@echo "OIDC issuer:  $(ISSUER)"
 	@echo "JWKS:         $(JWKS_URL)"
+	@echo "Auth BFF:     $(BFF_URL)"
 	@echo "Admin UI:     http://localhost:$(PUBLIC_PORT)/admin/ (loopback only)"
 	@echo "Demo user:    $(DEMO_USER) / $(DEMO_PASSWORD)"
 	@echo "M2M client:   $(M2M_ID) (client_credentials)"
+	@echo ""
+	@echo "Note: realm import only runs on a fresh DB. If kalke-bff is missing, run: make destroy && make up"
 
-down: ## Stop and remove containers (keeps DB volume)
+down: ## Stop and remove containers (keeps DB volumes)
 	$(COMPOSE) down
 
 destroy: ## Stop and delete volumes (re-imports realm on next up)
@@ -96,5 +105,5 @@ aws-down: ## Stop AWS prod stack
 aws-logs: ## Follow AWS prod logs
 	$(AWS_COMPOSE_BASE) --profile tunnel logs -f
 
-aws-ps: ## Show AWS prod status
+aws-ps: ## Show AWS prod stack
 	$(AWS_COMPOSE_BASE) --profile tunnel ps

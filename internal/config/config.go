@@ -33,6 +33,8 @@ type Config struct {
 	KCAdminPassword     string
 	CORSOrigins         []string
 	CookieDomain        string
+	CookieSecure        bool
+	CookieSameSite      string // none | lax | strict
 	SessionTTL          time.Duration
 	LoginRatePerMinute  int
 	SignupRatePerMinute int
@@ -96,6 +98,11 @@ func Load() (Config, error) {
 		adminEmails = []string{"henriquekalke@icloud.com"}
 	}
 
+	cookieDomain := ".kalke.dev"
+	if v, ok := os.LookupEnv("COOKIE_DOMAIN"); ok {
+		cookieDomain = v
+	}
+
 	return Config{
 		HTTPAddr:            getenv("HTTP_ADDR", ":8080"),
 		DatabaseURL:         dbURL,
@@ -120,7 +127,9 @@ func Load() (Config, error) {
 		KCAdminUser:         adminUser,
 		KCAdminPassword:     adminPass,
 		CORSOrigins:         cors,
-		CookieDomain:        getenv("COOKIE_DOMAIN", ".kalke.dev"),
+		CookieDomain:        cookieDomain,
+		CookieSecure:        parseBool(getenv("COOKIE_SECURE", "true"), true),
+		CookieSameSite:      strings.ToLower(getenv("COOKIE_SAMESITE", "none")),
 		SessionTTL:          sessionTTL,
 		LoginRatePerMinute:  loginRate,
 		SignupRatePerMinute: signupRateMin,
