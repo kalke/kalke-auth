@@ -101,6 +101,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO_DIR: /home/ubuntu/kalke-auth
+          PDE_BASE_URL: ${{ secrets.PDE_BASE_URL }}
+          PDE_M2M_CLIENT_ID: ${{ secrets.PDE_M2M_CLIENT_ID }}
+          PDE_M2M_CLIENT_SECRET: ${{ secrets.PDE_M2M_CLIENT_SECRET }}
           PDE_USER_FORWARD_SECRET: ${{ secrets.PDE_USER_FORWARD_SECRET }}
         run: |
           set -euo pipefail

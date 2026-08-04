@@ -35,8 +35,9 @@ cp prod.env.example prod.env && nano prod.env   # Neon/Redis/Mailgun/session sec
 make aws-up   # first manual boot
 ```
 
-`prod.env` **nunca** vai para o git. No deploy, o CI só atualiza `PDE_USER_FORWARD_SECRET`
-(a partir do GitHub secret homônimo) e mantém o restante do arquivo.
+`prod.env` **nunca** vai para o git. No deploy, o CI sincroniza `PDE_BASE_URL`,
+`PDE_M2M_CLIENT_ID`, `PDE_M2M_CLIENT_SECRET` e `PDE_USER_FORWARD_SECRET` a partir
+dos GitHub secrets homônimos e mantém o restante do arquivo.
 
 ### 3. DNS
 
@@ -52,7 +53,7 @@ Deploy corre num **self-hosted runner** na própria EC2 (`kalke-auth-ec2`). Runn
 
 1. Runner local em `~/kalke-auth`
 2. `git fetch` de `main` (via `GITHUB_TOKEN`)
-3. `make aws-up` (rebuild + restart; **mantém** `prod.env`, sync `PDE_USER_FORWARD_SECRET`)
+3. `make aws-up` (rebuild + restart; **mantém** `prod.env`, sync `PDE_*`)
 
 ## Updates manuais (opcional)
 
