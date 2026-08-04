@@ -15,6 +15,18 @@ type m2mCache struct {
 }
 
 func (s *Server) proxyExtract(w http.ResponseWriter, r *http.Request) {
+	s.proxyPDE(w, r, "/v1/extract")
+}
+
+func (s *Server) proxyExtractions(w http.ResponseWriter, r *http.Request) {
+	path := "/v1/extractions"
+	if id := r.PathValue("id"); id != "" {
+		path += "/" + id
+	}
+	s.proxyPDE(w, r, path)
+}
+
+func (s *Server) proxyPDE(w http.ResponseWriter, r *http.Request, upstreamPath string) {
 	if s.cfg.PDEBaseURL == "" {
 		writeErr(w, http.StatusServiceUnavailable, "extract proxy not configured")
 		return
@@ -37,11 +49,15 @@ func (s *Server) proxyExtract(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	upstream := s.cfg.PDEBaseURL + "/v1/extract"
+	upstream := s.cfg.PDEBaseURL + upstreamPath
 	if q := r.URL.RawQuery; q != "" {
 		upstream += "?" + q
 	}
-	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, upstream, r.Body)
+	var body io.Reader
+	if r.Body != nil && r.Method != http.MethodGet && r.Method != http.MethodHead {
+		body = r.Body
+	}
+	req, err := http.NewRequestWithContext(r.Context(), r.Method, upstream, body)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "proxy error")
 		return
@@ -56,13 +72,13 @@ func (s *Server) proxyExtract(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := s.pdeHTTP.Do(req)
 	if err != nil {
-		s.log.Error("pde extract proxy", "err", err, "email", p.UserEmail)
+		s.log.Error("pde proxy", "err", err, "email", p.UserEmail, "path", upstreamPath)
 		writeErr(w, http.StatusBadGateway, "upstream unavailable")
 		return
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	for _, h := range []string{"Content-Type", "Cache-Control"} {
+	for _, h := range []string{"Content-Type", "Cache-Control", "Retry-After", "X-RateLimit-Limit", "X-RateLimit-Remaining"} {
 		if v := resp.Header.Get(h); v != "" {
 			w.Header().Set(h, v)
 		}

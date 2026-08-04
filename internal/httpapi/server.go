@@ -101,6 +101,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /v1/tokens/{id}", s.revokeToken)
 	mux.HandleFunc("POST /v1/introspect", s.introspect)
 	mux.HandleFunc("POST /v1/extract", s.proxyExtract)
+	mux.HandleFunc("GET /v1/extractions", s.proxyExtractions)
+	mux.HandleFunc("GET /v1/extractions/{id}", s.proxyExtractions)
 	mux.HandleFunc("/", s.oidcProxy)
 	return s.cors(mux)
 }
