@@ -32,6 +32,40 @@ git clean -fd
 # Drop token from remote URL so it is not stored on disk.
 git remote set-url origin "https://github.com/kalke/kalke-auth.git"
 
+if [[ -n "${PDE_USER_FORWARD_SECRET:-}" ]]; then
+  echo "==> Syncing PDE_USER_FORWARD_SECRET into prod.env"
+  umask 077
+  PDE_USER_FORWARD_SECRET="${PDE_USER_FORWARD_SECRET}" python3 - <<'PY'
+import os
+from pathlib import Path
+
+path = Path("prod.env")
+secret = os.environ["PDE_USER_FORWARD_SECRET"].strip()
+if not secret:
+    raise SystemExit("PDE_USER_FORWARD_SECRET is empty")
+
+def q(v: str) -> str:
+    return "'" + v.replace("'", "'\"'\"'") + "'"
+
+key = "PDE_USER_FORWARD_SECRET"
+lines = path.read_text().splitlines(keepends=True)
+out = []
+found = False
+for line in lines:
+    if line.startswith(f"{key}=") or line.startswith(f"{key} ="):
+        out.append(f"{key}={q(secret)}\n")
+        found = True
+    else:
+        out.append(line)
+if not found:
+    if out and not str(out[-1]).endswith("\n"):
+        out[-1] = str(out[-1]) + "\n"
+    out.append(f"{key}={q(secret)}\n")
+path.write_text("".join(out))
+print(f"updated {path}")
+PY
+fi
+
 echo "==> Freeing Docker disk (t3.micro root is tight)"
 docker builder prune -af >/dev/null || true
 docker image prune -af >/dev/null || true

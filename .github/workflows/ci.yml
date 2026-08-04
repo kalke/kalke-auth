@@ -99,6 +99,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO_DIR: /home/ubuntu/kalke-auth
+          PDE_USER_FORWARD_SECRET: ${{ secrets.PDE_USER_FORWARD_SECRET }}
         run: |
           set -euo pipefail
           chmod +x "${REPO_DIR}/deploy/remote-update.sh"

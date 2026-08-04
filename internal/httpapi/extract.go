@@ -69,6 +69,9 @@ func (s *Server) proxyPDE(w http.ResponseWriter, r *http.Request, upstreamPath s
 	req.ContentLength = r.ContentLength
 	req.Header.Set("X-Kalke-User-Email", p.UserEmail)
 	req.Header.Set("X-Kalke-User-Sub", p.UserSub)
+	if s.cfg.PDEUserForwardSecret != "" {
+		req.Header.Set("X-Kalke-Forward-Secret", s.cfg.PDEUserForwardSecret)
+	}
 
 	resp, err := s.pdeHTTP.Do(req)
 	if err != nil {

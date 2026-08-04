@@ -116,6 +116,7 @@ services:
       PDE_BASE_URL: ${PDE_BASE_URL:-http://api:8080}
       PDE_M2M_CLIENT_ID: ${PDE_M2M_CLIENT_ID:-pde-m2m}
       PDE_M2M_CLIENT_SECRET: ${PDE_M2M_CLIENT_SECRET:-pde-m2m-dev-secret}
+      PDE_USER_FORWARD_SECRET: ${PDE_USER_FORWARD_SECRET:-local-dev-m2m-forward-secret}
     ports:
       - "${BFF_BIND:-127.0.0.1}:${BFF_PORT:-8090}:8080"
     healthcheck:

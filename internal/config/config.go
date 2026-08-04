@@ -44,6 +44,8 @@ type Config struct {
 	PDEBaseURL          string // empty disables POST /v1/extract proxy
 	PDEM2MClientID      string
 	PDEM2MClientSecret  string
+	// PDEUserForwardSecret must match PDE M2M_USER_FORWARD_SECRET.
+	PDEUserForwardSecret string
 }
 
 func Load() (Config, error) {
@@ -108,8 +110,12 @@ func Load() (Config, error) {
 
 	pdeBase := strings.TrimSuffix(strings.TrimSpace(os.Getenv("PDE_BASE_URL")), "/")
 	pdeM2MSecret := strings.TrimSpace(os.Getenv("PDE_M2M_CLIENT_SECRET"))
+	pdeForwardSecret := strings.TrimSpace(os.Getenv("PDE_USER_FORWARD_SECRET"))
 	if pdeBase != "" && pdeM2MSecret == "" {
 		return Config{}, fmt.Errorf("PDE_M2M_CLIENT_SECRET is required when PDE_BASE_URL is set")
+	}
+	if pdeBase != "" && pdeForwardSecret == "" {
+		return Config{}, fmt.Errorf("PDE_USER_FORWARD_SECRET is required when PDE_BASE_URL is set")
 	}
 
 	return Config{
@@ -145,9 +151,10 @@ func Load() (Config, error) {
 		SignupRatePerHour:   signupRateHour,
 		OAuthRedirectURI:    getenv("OAUTH_REDIRECT_URI", "https://auth.kalke.dev/v1/auth/callback"),
 		OAuthSuccessURL:     getenv("OAUTH_SUCCESS_URL", "https://kalke.dev/playground"),
-		PDEBaseURL:          pdeBase,
-		PDEM2MClientID:      getenv("PDE_M2M_CLIENT_ID", "pde-m2m"),
-		PDEM2MClientSecret:  pdeM2MSecret,
+		PDEBaseURL:           pdeBase,
+		PDEM2MClientID:       getenv("PDE_M2M_CLIENT_ID", "pde-m2m"),
+		PDEM2MClientSecret:   pdeM2MSecret,
+		PDEUserForwardSecret: pdeForwardSecret,
 	}, nil
 }
 
