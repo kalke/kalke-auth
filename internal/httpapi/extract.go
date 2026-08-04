@@ -1,0 +1,101 @@
+package httpapi
+
+import (
+	"context"
+	"io"
+	"net/http"
+	"sync"
+	"time"
+)
+
+type m2mCache struct {
+	mu     sync.Mutex
+	token  string
+	expiry time.Time
+}
+
+func (s *Server) proxyExtract(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.PDEBaseURL == "" {
+		writeErr(w, http.StatusServiceUnavailable, "extract proxy not configured")
+		return
+	}
+	p, err := s.principalFromRequest(r)
+	if err != nil {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	perms := s.effectivePermissions(p.UserEmail, p.Permissions)
+	if !hasPermission(perms, "extract:write") {
+		writeErr(w, http.StatusForbidden, "forbidden")
+		return
+	}
+
+	bearer, err := s.cachedM2MToken(r.Context())
+	if err != nil {
+		s.log.Error("pde m2m token", "err", err, "email", p.UserEmail)
+		writeErr(w, http.StatusBadGateway, "upstream auth failed")
+		return
+	}
+
+	upstream := s.cfg.PDEBaseURL + "/v1/extract"
+	if q := r.URL.RawQuery; q != "" {
+		upstream += "?" + q
+	}
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, upstream, r.Body)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "proxy error")
+		return
+	}
+	if ct := r.Header.Get("Content-Type"); ct != "" {
+		req.Header.Set("Content-Type", ct)
+	}
+	req.Header.Set("Authorization", "Bearer "+bearer)
+	req.ContentLength = r.ContentLength
+	req.Header.Set("X-Kalke-User-Email", p.UserEmail)
+	req.Header.Set("X-Kalke-User-Sub", p.UserSub)
+
+	resp, err := s.pdeHTTP.Do(req)
+	if err != nil {
+		s.log.Error("pde extract proxy", "err", err, "email", p.UserEmail)
+		writeErr(w, http.StatusBadGateway, "upstream unavailable")
+		return
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	for _, h := range []string{"Content-Type", "Cache-Control"} {
+		if v := resp.Header.Get(h); v != "" {
+			w.Header().Set(h, v)
+		}
+	}
+	w.WriteHeader(resp.StatusCode)
+	_, _ = io.Copy(w, io.LimitReader(resp.Body, 8<<20))
+}
+
+func (s *Server) cachedM2MToken(ctx context.Context) (string, error) {
+	s.m2m.mu.Lock()
+	defer s.m2m.mu.Unlock()
+	if s.m2m.token != "" && time.Now().Before(s.m2m.expiry) {
+		return s.m2m.token, nil
+	}
+	token, ttl, err := s.kc.ClientCredentialsToken(ctx, s.cfg.PDEM2MClientID, s.cfg.PDEM2MClientSecret)
+	if err != nil {
+		return "", err
+	}
+	// Refresh a bit before expiry.
+	skew := 30 * time.Second
+	if ttl > 2*skew {
+		ttl -= skew
+	}
+	s.m2m.token = token
+	s.m2m.expiry = time.Now().Add(ttl)
+	return token, nil
+}
+
+func hasPermission(perms []string, want string) bool {
+	for _, p := range perms {
+		if p == want || p == "admin" {
+			return true
+		}
+	}
+	return false
+}

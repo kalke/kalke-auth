@@ -132,6 +132,42 @@ func (c *Client) tokenUserInfo(ctx context.Context, form url.Values) (UserInfo, 
 	}, nil
 }
 
+// ClientCredentialsToken fetches an access token for a confidential M2M client.
+func (c *Client) ClientCredentialsToken(ctx context.Context, clientID, clientSecret string) (string, time.Duration, error) {
+	form := url.Values{}
+	form.Set("grant_type", "client_credentials")
+	form.Set("client_id", clientID)
+	form.Set("client_secret", clientSecret)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		c.internalBase+"/realms/kalke/protocol/openid-connect/token",
+		strings.NewReader(form.Encode()))
+	if err != nil {
+		return "", 0, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return "", 0, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode != http.StatusOK {
+		return "", 0, fmt.Errorf("keycloak client_credentials failed: %d", resp.StatusCode)
+	}
+	var tr TokenResponse
+	if err := json.Unmarshal(body, &tr); err != nil {
+		return "", 0, err
+	}
+	if tr.AccessToken == "" {
+		return "", 0, fmt.Errorf("empty access_token")
+	}
+	ttl := time.Duration(tr.ExpiresIn) * time.Second
+	if ttl <= 0 {
+		ttl = 60 * time.Second
+	}
+	return tr.AccessToken, ttl, nil
+}
+
 func decodeAccessClaims(jwt string) (accessClaims, error) {
 	parts := strings.Split(jwt, ".")
 	if len(parts) < 2 {

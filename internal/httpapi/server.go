@@ -39,6 +39,8 @@ type Server struct {
 	resetOTP *otp.Store
 	mailer   mail.Mailer
 	proxy    *httputil.ReverseProxy
+	pdeHTTP  *http.Client
+	m2m      m2mCache
 	log      *slog.Logger
 }
 
@@ -70,6 +72,7 @@ func New(cfg config.Config, st *store.Store, kc *keycloak.Client, admin *keycloa
 		resetOTP: otp.NewStore(rdb, cfg.TokenPepper, "reset:otp:"),
 		mailer:   mailer,
 		proxy:    proxy,
+		pdeHTTP:  &http.Client{Timeout: 180 * time.Second},
 		log:      log,
 	}
 }
@@ -97,6 +100,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/tokens", s.listTokens)
 	mux.HandleFunc("DELETE /v1/tokens/{id}", s.revokeToken)
 	mux.HandleFunc("POST /v1/introspect", s.introspect)
+	mux.HandleFunc("POST /v1/extract", s.proxyExtract)
 	mux.HandleFunc("/", s.oidcProxy)
 	return s.cors(mux)
 }

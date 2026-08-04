@@ -41,6 +41,9 @@ type Config struct {
 	SignupRatePerHour   int
 	OAuthRedirectURI    string
 	OAuthSuccessURL     string
+	PDEBaseURL          string // empty disables POST /v1/extract proxy
+	PDEM2MClientID      string
+	PDEM2MClientSecret  string
 }
 
 func Load() (Config, error) {
@@ -103,6 +106,12 @@ func Load() (Config, error) {
 		cookieDomain = v
 	}
 
+	pdeBase := strings.TrimSuffix(strings.TrimSpace(os.Getenv("PDE_BASE_URL")), "/")
+	pdeM2MSecret := strings.TrimSpace(os.Getenv("PDE_M2M_CLIENT_SECRET"))
+	if pdeBase != "" && pdeM2MSecret == "" {
+		return Config{}, fmt.Errorf("PDE_M2M_CLIENT_SECRET is required when PDE_BASE_URL is set")
+	}
+
 	return Config{
 		HTTPAddr:            getenv("HTTP_ADDR", ":8080"),
 		DatabaseURL:         dbURL,
@@ -136,6 +145,9 @@ func Load() (Config, error) {
 		SignupRatePerHour:   signupRateHour,
 		OAuthRedirectURI:    getenv("OAUTH_REDIRECT_URI", "https://auth.kalke.dev/v1/auth/callback"),
 		OAuthSuccessURL:     getenv("OAUTH_SUCCESS_URL", "https://kalke.dev/playground"),
+		PDEBaseURL:          pdeBase,
+		PDEM2MClientID:      getenv("PDE_M2M_CLIENT_ID", "pde-m2m"),
+		PDEM2MClientSecret:  pdeM2MSecret,
 	}, nil
 }
 

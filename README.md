@@ -34,6 +34,8 @@ Local stack:
 | OIDC issuer (Caddy → Keycloak) | http://localhost:8443/realms/kalke |
 | Demo user | `demo@kalke.local` / `DemoPass123!` |
 
+Playground extract goes to `POST /v1/extract` on the BFF with the **session cookie**. The BFF calls PDE with an M2M JWT — the SPA never sees a PAT.
+
 Cookies are host-only + `SameSite=Lax` + non-Secure so the Vite app on `:5173` can use session auth over HTTP.
 
 If you change the realm JSON after the first boot, wipe volumes: `make destroy && make up`.
