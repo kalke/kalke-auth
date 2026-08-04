@@ -19,6 +19,13 @@ func TestEffectivePermissions(t *testing.T) {
 		t.Fatalf("non-admin must lose privileged roles: %v", got)
 	}
 
+	got = s.effectivePermissions("other@example.com", []string{
+		"offline_access", "default-roles-kalke", "uma_authorization", "extract:write",
+	})
+	if len(got) != 1 || got[0] != "extract:write" {
+		t.Fatalf("keycloak noise roles must be stripped: %v", got)
+	}
+
 	if s.isAdminEmail("") || s.isAdminEmail("other@example.com") {
 		t.Fatal("unexpected admin email match")
 	}

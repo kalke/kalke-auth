@@ -8,6 +8,15 @@ var privilegedPermissions = map[string]struct{}{
 	"bank:write": {},
 }
 
+// keycloakNoisePermissions appear in JWT realm-role claims but are not app permissions.
+var keycloakNoisePermissions = map[string]struct{}{
+	"offline_access":       {},
+	"uma_authorization":    {},
+	"manage-account":       {},
+	"manage-account-links": {},
+	"view-profile":         {},
+}
+
 func (s *Server) isAdminEmail(email string) bool {
 	email = strings.ToLower(strings.TrimSpace(email))
 	if email == "" {
@@ -21,7 +30,8 @@ func (s *Server) isAdminEmail(email string) bool {
 	return false
 }
 
-// effectivePermissions drops privileged roles unless the email is allowlisted.
+// effectivePermissions drops privileged roles unless the email is allowlisted,
+// and strips Keycloak built-in roles from the permissions claim.
 func (s *Server) effectivePermissions(email string, perms []string) []string {
 	if len(perms) == 0 {
 		return nil
@@ -31,7 +41,10 @@ func (s *Server) effectivePermissions(email string, perms []string) []string {
 	seen := map[string]struct{}{}
 	for _, p := range perms {
 		p = strings.TrimSpace(p)
-		if p == "" {
+		if p == "" || strings.HasPrefix(p, "default-roles-") {
+			continue
+		}
+		if _, noise := keycloakNoisePermissions[p]; noise {
 			continue
 		}
 		if _, priv := privilegedPermissions[p]; priv && !allowPriv {

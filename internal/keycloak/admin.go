@@ -68,7 +68,7 @@ type createUserBody struct {
 	Attributes      map[string][]string `json:"attributes,omitempty"`
 }
 
-// CreateUser creates a realm user with password and no realm roles.
+// CreateUser creates a realm user with password and grants extract:write.
 // Used after email OTP verification — never grant admin via public signup.
 func (a *AdminClient) CreateUser(ctx context.Context, name, email, password string) (userID string, err error) {
 	tok, err := a.token(ctx)
@@ -118,6 +118,11 @@ func (a *AdminClient) CreateUser(ctx context.Context, name, email, password stri
 	userID = parts[len(parts)-1]
 	if err := a.clearRequiredActions(ctx, tok, userID); err != nil {
 		return "", err
+	}
+	// Playground extract requires extract:write; assign explicitly so passwordless
+	// sessions (which list direct roles) and JWT claims both see it.
+	if err := a.assignRealmRole(ctx, tok, userID, "extract:write"); err != nil {
+		return "", fmt.Errorf("assign extract:write: %w", err)
 	}
 	return userID, nil
 }
@@ -221,7 +226,7 @@ func (a *AdminClient) FindUserByEmail(ctx context.Context, email string) (RealmU
 	return RealmUser{ID: u.ID, Email: outEmail, Enabled: u.Enabled}, nil
 }
 
-// ListRealmRoleNames returns assigned realm role names for a user.
+// ListRealmRoleNames returns effective realm role names for a user (composites expanded).
 func (a *AdminClient) ListRealmRoleNames(ctx context.Context, userID string) ([]string, error) {
 	userID = strings.TrimSpace(userID)
 	if userID == "" {
@@ -232,7 +237,7 @@ func (a *AdminClient) ListRealmRoleNames(ctx context.Context, userID string) ([]
 		return nil, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		a.internalBase+"/admin/realms/kalke/users/"+url.PathEscape(userID)+"/role-mappings/realm", nil)
+		a.internalBase+"/admin/realms/kalke/users/"+url.PathEscape(userID)+"/role-mappings/realm/composite", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -255,18 +260,24 @@ func (a *AdminClient) ListRealmRoleNames(ctx context.Context, userID string) ([]
 	out := make([]string, 0, len(roles))
 	for _, r := range roles {
 		name := strings.TrimSpace(r.Name)
-		if name == "" {
-			continue
-		}
-		// Skip Keycloak composite defaults that are not app permissions.
-		if strings.HasPrefix(name, "default-roles-") ||
-			name == "offline_access" ||
-			name == "uma_authorization" {
+		if name == "" || isKeycloakBuiltinRole(name) {
 			continue
 		}
 		out = append(out, name)
 	}
 	return out, nil
+}
+
+func isKeycloakBuiltinRole(name string) bool {
+	if strings.HasPrefix(name, "default-roles-") {
+		return true
+	}
+	switch name {
+	case "offline_access", "uma_authorization", "manage-account", "manage-account-links", "view-profile":
+		return true
+	default:
+		return false
+	}
 }
 
 // SetPassword updates a user's password via the Admin API (non-temporary).
