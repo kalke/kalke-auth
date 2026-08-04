@@ -57,7 +57,8 @@ func (s *Server) proxyPDE(w http.ResponseWriter, r *http.Request, upstreamPath s
 	if r.Body != nil && r.Method != http.MethodGet && r.Method != http.MethodHead {
 		body = r.Body
 	}
-	req, err := http.NewRequestWithContext(r.Context(), r.Method, upstream, body)
+	// PDEBaseURL is server config; path is a fixed allowlist from route handlers.
+	req, err := http.NewRequestWithContext(r.Context(), r.Method, upstream, body) // #nosec G704
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "proxy error")
 		return
@@ -73,7 +74,7 @@ func (s *Server) proxyPDE(w http.ResponseWriter, r *http.Request, upstreamPath s
 		req.Header.Set("X-Kalke-Forward-Secret", s.cfg.PDEUserForwardSecret)
 	}
 
-	resp, err := s.pdeHTTP.Do(req)
+	resp, err := s.pdeHTTP.Do(req) // #nosec G704
 	if err != nil {
 		s.log.Error("pde proxy", "err", err, "email", p.UserEmail, "path", upstreamPath)
 		writeErr(w, http.StatusBadGateway, "upstream unavailable")
