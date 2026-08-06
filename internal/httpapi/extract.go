@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -70,6 +71,13 @@ func (s *Server) proxyPDE(w http.ResponseWriter, r *http.Request, upstreamPath s
 	req.ContentLength = r.ContentLength
 	req.Header.Set("X-Kalke-User-Email", p.UserEmail)
 	req.Header.Set("X-Kalke-User-Sub", p.UserSub)
+	// Browser origin — PDE would otherwise see the BFF's IP and Go-http-client UA.
+	if ip := clientIP(r); ip != "" {
+		req.Header.Set("X-Kalke-Client-IP", ip)
+	}
+	if ua := strings.TrimSpace(r.UserAgent()); ua != "" {
+		req.Header.Set("X-Kalke-User-Agent", ua)
+	}
 	if s.cfg.PDEUserForwardSecret != "" {
 		req.Header.Set("X-Kalke-Forward-Secret", s.cfg.PDEUserForwardSecret)
 	}
