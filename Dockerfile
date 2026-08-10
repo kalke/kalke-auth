@@ -1,4 +1,4 @@
-FROM golang:1.25-bookworm AS api-build
+FROM golang:1.26-bookworm AS api-build
 WORKDIR /src
 ENV GOTOOLCHAIN=auto
 COPY go.mod go.sum ./
@@ -7,7 +7,7 @@ COPY cmd ./cmd
 COPY internal ./internal
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api
 
-FROM quay.io/keycloak/keycloak:26.3
+FROM quay.io/keycloak/keycloak:26.7
 USER root
 
 COPY --from=api-build /out/api /opt/kalke/api
