@@ -521,7 +521,10 @@ func (s *Server) cors(next http.Handler) http.Handler {
 				w.Header().Set("Access-Control-Allow-Origin", origin)
 				w.Header().Set("Vary", "Origin")
 				w.Header().Set("Access-Control-Allow-Credentials", "true")
-				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Kalke-Introspect-Key")
+				w.Header().Set(
+					"Access-Control-Allow-Headers",
+					"Content-Type, Authorization, Idempotency-Key, X-Kalke-Introspect-Key",
+				)
 				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
 			}
 		}
