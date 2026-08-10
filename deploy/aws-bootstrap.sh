@@ -50,8 +50,8 @@ $SUDO ufw --force enable || true
 
 echo "==> Done. Log out/in (docker group), then:"
 echo "  cd ~/kalke-auth   # or: git clone … && cd kalke-auth"
-echo "  git checkout cursor/aws-auth-f44b   # until merged"
+echo "  git checkout main && git pull"
 echo "  cp prod.env.example prod.env && nano prod.env"
 echo "  make aws-up"
 echo ""
-echo "DNS: auth.kalke.dev A → this instance Elastic IP (Cloudflare DNS-only until TLS works)."
+echo "DNS: auth.kalke.dev A → this instance Elastic IP 54.234.95.66 (Cloudflare DNS-only until TLS works)."

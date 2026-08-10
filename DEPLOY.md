@@ -35,13 +35,18 @@ cp prod.env.example prod.env && nano prod.env   # Neon/Redis/Mailgun/session sec
 make aws-up   # first manual boot
 ```
 
-`prod.env` **nunca** vai para o git. No deploy, o CI sincroniza `PDE_BASE_URL`,
-`PDE_M2M_CLIENT_ID`, `PDE_M2M_CLIENT_SECRET` e `PDE_USER_FORWARD_SECRET` a partir
-dos GitHub secrets homônimos e mantém o restante do arquivo.
+`prod.env` **nunca** vai para o git. No deploy, o CI sincroniza `PDE_*` e `EBANK_*`
+a partir dos GitHub secrets homônimos e mantém o restante do arquivo.
 
 ### 3. DNS
 
-`auth.kalke.dev` **A** → Elastic IP → Cloudflare **DNS only** until TLS works.
+Grey-cloud A records → Elastic IP **`54.234.95.66`**:
+
+- `auth.kalke.dev`
+- `pde.kalke.dev` (PDE container on same host)
+- `ebank.kalke.dev` (e-bank container on same host)
+
+Caddy (`Caddyfile.aws`) terminates TLS for all three.
 
 ## CI/CD (automático)
 
@@ -53,21 +58,26 @@ Deploy corre num **self-hosted runner** na própria EC2 (`kalke-auth-ec2`). Runn
 
 1. Runner local em `~/kalke-auth`
 2. `git fetch` de `main` (via `GITHUB_TOKEN`)
-3. `make aws-up` (rebuild + restart; **mantém** `prod.env`, sync `PDE_*`)
+3. `make aws-up` (rebuild + restart; **mantém** `prod.env`, sync `PDE_*` + `EBANK_*`)
 
 ## Updates manuais (opcional)
 
 ```bash
-ssh -i first.pem ubuntu@EIP
+ssh -i first.pem ubuntu@54.234.95.66
 cd ~/kalke-auth && bash deploy/remote-update.sh   # precisa GH_TOKEN
 # ou: git pull && make aws-up
 ```
 
+## Capacity (auth + PDE + e-bank)
+
+Soft limits ≈ 1.5–1.7 GB. Prefer **t3.small (2 GB)** + 2G swap when running the
+demo bank. A micro will thrash under the three APIs.
+
 ## Stay on free tier
 
-- Uma micro 24/7 · Neon · Upstash · Mailgun free · Workers Free (sem Containers)
+- Neon · Upstash · Mailgun free · Workers Free (portfolio only; APIs on EC2)
 - Budget alert $1 na AWS
-
+- Avoid Cloudflare Containers (paid)
 ## Keycloak admin — `keycloak.kalke.dev` (Cloudflare Tunnel + Access)
 
 O admin **não** passa pelo Caddy público. Sobe atrás do **Cloudflare Zero Trust** (Tunnel + Access).
