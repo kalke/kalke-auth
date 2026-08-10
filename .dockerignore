@@ -1,6 +1,5 @@
 .git
 .github
-node_modules
 .wrangler
 .env
 .env.*
@@ -8,11 +7,6 @@ node_modules
 local.env
 prod.env
 *.md
-src
-package.json
-package-lock.json
-wrangler.json
-tsconfig.json
 deploy
 *.log
 .idea
@@ -21,3 +15,4 @@ deploy
 coverage.out
 bin
 dist
+node_modules
