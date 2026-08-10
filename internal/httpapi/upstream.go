@@ -65,6 +65,9 @@ func (s *Server) proxyUpstream(w http.ResponseWriter, r *http.Request, path stri
 	if ct := r.Header.Get("Content-Type"); ct != "" {
 		req.Header.Set("Content-Type", ct)
 	}
+	if idem := strings.TrimSpace(r.Header.Get("Idempotency-Key")); idem != "" {
+		req.Header.Set("Idempotency-Key", idem)
+	}
 	req.Header.Set("Authorization", "Bearer "+bearer)
 	req.ContentLength = r.ContentLength
 	req.Header.Set("X-Kalke-User-Email", prin.UserEmail)
@@ -138,6 +141,23 @@ func (s *Server) proxyExtractions(w http.ResponseWriter, r *http.Request) {
 func (s *Server) bankProxy(upstreamPath string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		s.proxyUpstream(w, r, upstreamPath, s.ebankUpstream())
+	}
+}
+
+// joinBankProxyPath appends display or cep path params onto an upstream prefix.
+func joinBankProxyPath(upstreamPrefix, display, cep string) string {
+	suffix := display
+	if suffix == "" {
+		suffix = cep
+	}
+	return strings.TrimRight(upstreamPrefix, "/") + "/" + suffix
+}
+
+// bankProxyPath appends a path parameter onto a fixed upstream prefix.
+func (s *Server) bankProxyPath(upstreamPrefix string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		path := joinBankProxyPath(upstreamPrefix, r.PathValue("display"), r.PathValue("cep"))
+		s.proxyUpstream(w, r, path, s.ebankUpstream())
 	}
 }
 
