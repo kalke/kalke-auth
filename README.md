@@ -1,53 +1,43 @@
 # kalke-auth
 
-OIDC identity provider for Kalke apps, plus a small **Go API** that sits in front of Keycloak.
+OIDC IdP (Keycloak) + Go BFF for Kalke apps.
 
-- Browser / playground talk to the Go API (`/v1/*`).
-- Keycloak stays internal; only discovery + JWKS are proxied publicly.
-- Apps validate JWTs against `https://auth.kalke.dev/realms/kalke`.
-
-### Auth API (cookie session)
-
-| Method | Path | Notes |
-|--------|------|--------|
-| POST | `/v1/auth/login` | email + password → session cookie |
-| POST | `/v1/auth/signup` (+ `/verify`, `/resend`) | OTP signup |
-| GET | `/v1/auth/me` | current session |
-| POST | `/v1/auth/password` | `{current_password,new_password}` (session; ≥10 chars, letter + digit) |
-| POST | `/v1/auth/logout` | clear session |
+- Browsers use cookie sessions on `/v1/*` (`auth.kalke.dev`)
+- APIs validate JWTs from `https://auth.kalke.dev/realms/kalke`
+- BFF proxies `/v1/extract*` → PDE and `/v1/bank/*` → e-bank (M2M + user-forward)
 
 ## Local
 
 ```bash
-cp .env.example .env
-cp local.env.example local.env   # or: make setup
-make up
-make jwks
-make token
+cp .env.example .env && cp local.env.example local.env
+make up && make jwks && make token
 ```
-
-Local stack:
 
 | Service | URL |
 |---------|-----|
-| Auth BFF (`/v1/*`) | http://localhost:8090 |
-| OIDC issuer (Caddy → Keycloak) | http://localhost:8443/realms/kalke |
-| Demo user | `demo@kalke.local` / `DemoPass123!` |
+| BFF | http://localhost:8090 |
+| OIDC (Caddy → Keycloak) | http://localhost:8443/realms/kalke |
+| Demo | `demo@kalke.local` / `DemoPass123!` |
 
-Playground extract goes to `POST /v1/extract` on the BFF with the **session cookie**. The BFF calls PDE with an M2M JWT — the SPA never sees a PAT.
+Realm JSON changes: `make destroy && make up`.
 
-Cookies are host-only + `SameSite=Lax` + non-Secure so the Vite app on `:5173` can use session auth over HTTP.
+## Production (EC2)
 
-If you change the realm JSON after the first boot, wipe volumes: `make destroy && make up`.
-
-## Production (AWS Free Tier)
-
-Keycloak + Go BFF on a free-tier EC2 (`t3.micro`) + Caddy TLS.  
-Push to `main` deploys over SSH (see **[DEPLOY.md](DEPLOY.md)**).
+Push `main` → self-hosted runner `kalke-auth-ec2` → `make aws-up`.
 
 ```bash
-# one-time on the EC2 instance
+# one-time on the instance
 bash deploy/aws-bootstrap.sh
-cp prod.env.example prod.env   # fill secrets
+cp prod.env.example prod.env   # Neon, Redis, Mailgun, KC, PDE_*, EBANK_*
 make aws-up
 ```
+
+| Host | Upstream |
+|------|----------|
+| `auth.kalke.dev` | `auth:8080` |
+| `pde.kalke.dev` | `pde-api:8080` |
+| `ebank.kalke.dev` | `ebank-api:8000` |
+
+DNS: grey-cloud A records → EIP. Keycloak admin via Tunnel + Access (`keycloak.kalke.dev`).
+
+With PDE + e-bank on the same box, prefer **t3.small (2 GB)** + 2G swap.

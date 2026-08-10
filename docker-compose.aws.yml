@@ -59,7 +59,7 @@ services:
       - caddy_config:/config
 
   # Zero Trust Tunnel — public hostname keycloak.kalke.dev → http://auth:8081
-  # Configure hostname + Access policy in Cloudflare dashboard (see DEPLOY.md).
+  # Keycloak admin UI via Cloudflare Tunnel + Access (not public Caddy).
   tunnel:
     image: cloudflare/cloudflared:2025.8.1
     restart: unless-stopped
