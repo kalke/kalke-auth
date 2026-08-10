@@ -29,21 +29,21 @@ import (
 const sessionCookie = "kalke_session"
 
 type Server struct {
-	cfg      config.Config
-	store    *store.Store
-	kc       *keycloak.Client
-	admin    *keycloak.AdminClient
-	rdb      *redis.Client
-	pending  *signup.Store
-	loginOTP *otp.Store
-	resetOTP *otp.Store
-	mailer   mail.Mailer
-	proxy    *httputil.ReverseProxy
-	pdeHTTP  *http.Client
+	cfg       config.Config
+	store     *store.Store
+	kc        *keycloak.Client
+	admin     *keycloak.AdminClient
+	rdb       *redis.Client
+	pending   *signup.Store
+	loginOTP  *otp.Store
+	resetOTP  *otp.Store
+	mailer    mail.Mailer
+	proxy     *httputil.ReverseProxy
+	pdeHTTP   *http.Client
 	ebankHTTP *http.Client
-	m2m      m2mCache
-	ebankM2M m2mCache
-	log      *slog.Logger
+	m2m       m2mCache
+	ebankM2M  m2mCache
+	log       *slog.Logger
 }
 
 type sessionPrincipal struct {
