@@ -1,4 +1,4 @@
-FROM golang:1.26-bookworm AS api-build
+FROM golang:1.26.5-bookworm AS api-build
 WORKDIR /src
 ENV GOTOOLCHAIN=auto
 COPY go.mod go.sum ./
