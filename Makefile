@@ -89,7 +89,8 @@ open-admin: ## Print admin console URL
 	@echo "http://localhost:$(PUBLIC_PORT)/admin/"
 
 aws-up: ## Prod on AWS Free Tier EC2: build + start auth + Caddy (+ tunnel if token set)
-	@if grep -Eq '^CLOUDFLARE_TUNNEL_TOKEN=.+' prod.env 2>/dev/null; then \
+	@tok=$$(awk -F= '/^CLOUDFLARE_TUNNEL_TOKEN=/{sub(/^[^=]*=/,""); gsub(/^["'\'']+|["'\'']+$$/,""); print; exit}' prod.env 2>/dev/null); \
+	if [ -n "$$tok" ]; then \
 	  $(AWS_COMPOSE_BASE) --profile tunnel up -d --build; \
 	  echo "Public: https://auth.kalke.dev"; \
 	  echo "Keycloak admin (Access): https://keycloak.kalke.dev/admin/"; \
