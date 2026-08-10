@@ -32,8 +32,8 @@ git clean -fd
 # Drop token from remote URL so it is not stored on disk.
 git remote set-url origin "https://github.com/kalke/kalke-auth.git"
 
-# Upsert PDE proxy settings from CI secrets (required for cookie → PDE extract).
-echo "==> Syncing PDE_* into prod.env"
+# Upsert PDE + e-bank proxy settings from CI secrets.
+echo "==> Syncing PDE_* and EBANK_* into prod.env"
 umask 077
 python3 - <<'PY'
 import os
@@ -52,23 +52,29 @@ for key in (
     "PDE_M2M_CLIENT_ID",
     "PDE_M2M_CLIENT_SECRET",
     "PDE_USER_FORWARD_SECRET",
+    "EBANK_BASE_URL",
+    "EBANK_M2M_CLIENT_ID",
+    "EBANK_M2M_CLIENT_SECRET",
+    "EBANK_USER_FORWARD_SECRET",
 ):
     val = os.environ.get(key, "").strip()
     if val:
         updates[key] = val
 
 # Defaults when enabling the proxy for the first time.
-if "PDE_BASE_URL" not in updates and not any(
-    line.startswith("PDE_BASE_URL=") for line in path.read_text().splitlines()
-):
-    updates["PDE_BASE_URL"] = "https://pde.kalke.dev"
-if "PDE_M2M_CLIENT_ID" not in updates and not any(
-    line.startswith("PDE_M2M_CLIENT_ID=") for line in path.read_text().splitlines()
-):
-    updates["PDE_M2M_CLIENT_ID"] = "pde-m2m"
+defaults = {
+    "PDE_BASE_URL": "https://pde.kalke.dev",
+    "PDE_M2M_CLIENT_ID": "pde-m2m",
+    "EBANK_BASE_URL": "https://ebank.kalke.dev",
+    "EBANK_M2M_CLIENT_ID": "ebank-m2m",
+}
+existing = path.read_text().splitlines()
+for key, default in defaults.items():
+    if key not in updates and not any(line.startswith(f"{key}=") for line in existing):
+        updates[key] = default
 
 if not updates:
-    print("no PDE_* secrets provided; leaving prod.env unchanged")
+    print("no PDE_*/EBANK_* secrets provided; leaving prod.env unchanged")
 else:
     lines = path.read_text().splitlines(keepends=True)
     out = []

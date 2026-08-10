@@ -32,12 +32,10 @@ func (s *Server) isAdminEmail(email string) bool {
 
 // effectivePermissions drops privileged roles unless the email is allowlisted,
 // and strips Keycloak built-in roles from the permissions claim.
+// Every signed-in principal also receives bank:demo for the portfolio playground.
 func (s *Server) effectivePermissions(email string, perms []string) []string {
-	if len(perms) == 0 {
-		return nil
-	}
 	allowPriv := s.isAdminEmail(email)
-	out := make([]string, 0, len(perms))
+	out := make([]string, 0, len(perms)+1)
 	seen := map[string]struct{}{}
 	for _, p := range perms {
 		p = strings.TrimSpace(p)
@@ -55,6 +53,9 @@ func (s *Server) effectivePermissions(email string, perms []string) []string {
 		}
 		seen[p] = struct{}{}
 		out = append(out, p)
+	}
+	if _, ok := seen["bank:demo"]; !ok {
+		out = append(out, "bank:demo")
 	}
 	return out
 }

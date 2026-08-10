@@ -105,6 +105,10 @@ jobs:
           PDE_M2M_CLIENT_ID: ${{ secrets.PDE_M2M_CLIENT_ID }}
           PDE_M2M_CLIENT_SECRET: ${{ secrets.PDE_M2M_CLIENT_SECRET }}
           PDE_USER_FORWARD_SECRET: ${{ secrets.PDE_USER_FORWARD_SECRET }}
+          EBANK_BASE_URL: ${{ secrets.EBANK_BASE_URL }}
+          EBANK_M2M_CLIENT_ID: ${{ secrets.EBANK_M2M_CLIENT_ID }}
+          EBANK_M2M_CLIENT_SECRET: ${{ secrets.EBANK_M2M_CLIENT_SECRET }}
+          EBANK_USER_FORWARD_SECRET: ${{ secrets.EBANK_USER_FORWARD_SECRET }}
         run: |
           set -euo pipefail
           chmod +x "${REPO_DIR}/deploy/remote-update.sh"

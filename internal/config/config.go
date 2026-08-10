@@ -46,6 +46,11 @@ type Config struct {
 	PDEM2MClientSecret  string
 	// PDEUserForwardSecret must match PDE M2M_USER_FORWARD_SECRET.
 	PDEUserForwardSecret string
+	EbankBaseURL         string // empty disables /v1/bank/* proxy
+	EbankM2MClientID     string
+	EbankM2MClientSecret string
+	// EbankUserForwardSecret must match e-bank-api M2M_USER_FORWARD_SECRET.
+	EbankUserForwardSecret string
 }
 
 func Load() (Config, error) {
@@ -118,6 +123,16 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("PDE_USER_FORWARD_SECRET is required when PDE_BASE_URL is set")
 	}
 
+	ebankBase := strings.TrimSuffix(strings.TrimSpace(os.Getenv("EBANK_BASE_URL")), "/")
+	ebankM2MSecret := strings.TrimSpace(os.Getenv("EBANK_M2M_CLIENT_SECRET"))
+	ebankForwardSecret := strings.TrimSpace(os.Getenv("EBANK_USER_FORWARD_SECRET"))
+	if ebankBase != "" && ebankM2MSecret == "" {
+		return Config{}, fmt.Errorf("EBANK_M2M_CLIENT_SECRET is required when EBANK_BASE_URL is set")
+	}
+	if ebankBase != "" && ebankForwardSecret == "" {
+		return Config{}, fmt.Errorf("EBANK_USER_FORWARD_SECRET is required when EBANK_BASE_URL is set")
+	}
+
 	return Config{
 		HTTPAddr:             getenv("HTTP_ADDR", ":8080"),
 		DatabaseURL:          dbURL,
@@ -151,10 +166,14 @@ func Load() (Config, error) {
 		SignupRatePerHour:    signupRateHour,
 		OAuthRedirectURI:     getenv("OAUTH_REDIRECT_URI", "https://auth.kalke.dev/v1/auth/callback"),
 		OAuthSuccessURL:      getenv("OAUTH_SUCCESS_URL", "https://kalke.dev/playground"),
-		PDEBaseURL:           pdeBase,
-		PDEM2MClientID:       getenv("PDE_M2M_CLIENT_ID", "pde-m2m"),
-		PDEM2MClientSecret:   pdeM2MSecret,
-		PDEUserForwardSecret: pdeForwardSecret,
+		PDEBaseURL:             pdeBase,
+		PDEM2MClientID:         getenv("PDE_M2M_CLIENT_ID", "pde-m2m"),
+		PDEM2MClientSecret:     pdeM2MSecret,
+		PDEUserForwardSecret:   pdeForwardSecret,
+		EbankBaseURL:           ebankBase,
+		EbankM2MClientID:       getenv("EBANK_M2M_CLIENT_ID", "ebank-m2m"),
+		EbankM2MClientSecret:   ebankM2MSecret,
+		EbankUserForwardSecret: ebankForwardSecret,
 	}, nil
 }
 

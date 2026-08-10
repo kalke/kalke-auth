@@ -40,7 +40,9 @@ type Server struct {
 	mailer   mail.Mailer
 	proxy    *httputil.ReverseProxy
 	pdeHTTP  *http.Client
+	ebankHTTP *http.Client
 	m2m      m2mCache
+	ebankM2M m2mCache
 	log      *slog.Logger
 }
 
@@ -62,18 +64,19 @@ func New(cfg config.Config, st *store.Store, kc *keycloak.Client, admin *keycloa
 		mailer = mail.LogMailer{Log: log}
 	}
 	return &Server{
-		cfg:      cfg,
-		store:    st,
-		kc:       kc,
-		admin:    admin,
-		rdb:      rdb,
-		pending:  signup.NewStore(rdb, cfg.TokenPepper),
-		loginOTP: otp.NewStore(rdb, cfg.TokenPepper, "login:otp:"),
-		resetOTP: otp.NewStore(rdb, cfg.TokenPepper, "reset:otp:"),
-		mailer:   mailer,
-		proxy:    proxy,
-		pdeHTTP:  &http.Client{Timeout: 180 * time.Second},
-		log:      log,
+		cfg:       cfg,
+		store:     st,
+		kc:        kc,
+		admin:     admin,
+		rdb:       rdb,
+		pending:   signup.NewStore(rdb, cfg.TokenPepper),
+		loginOTP:  otp.NewStore(rdb, cfg.TokenPepper, "login:otp:"),
+		resetOTP:  otp.NewStore(rdb, cfg.TokenPepper, "reset:otp:"),
+		mailer:    mailer,
+		proxy:     proxy,
+		pdeHTTP:   &http.Client{Timeout: 180 * time.Second},
+		ebankHTTP: &http.Client{Timeout: 60 * time.Second},
+		log:       log,
 	}
 }
 
@@ -103,6 +106,18 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/extract", s.proxyExtract)
 	mux.HandleFunc("GET /v1/extractions", s.proxyExtractions)
 	mux.HandleFunc("GET /v1/extractions/{id}", s.proxyExtractions)
+	mux.HandleFunc("GET /v1/bank/meta", s.proxyBankMeta)
+	mux.HandleFunc("POST /v1/bank/bootstrap", s.proxyBankBootstrap)
+	mux.HandleFunc("GET /v1/bank/account", s.proxyBankAccount)
+	mux.HandleFunc("GET /v1/bank/transactions", s.proxyBankTransactions)
+	mux.HandleFunc("POST /v1/bank/transfer", s.proxyBankTransfer)
+	mux.HandleFunc("POST /v1/bank/withdraw", s.proxyBankWithdraw)
+	mux.HandleFunc("GET /v1/bank/onboarding", s.proxyBankOnboarding)
+	mux.HandleFunc("POST /v1/bank/onboarding/start", s.proxyBankOnboardingStart)
+	mux.HandleFunc("POST /v1/bank/onboarding/consent", s.proxyBankOnboardingConsent)
+	mux.HandleFunc("POST /v1/bank/onboarding/skip", s.proxyBankOnboardingSkip)
+	mux.HandleFunc("POST /v1/bank/onboarding/documents", s.proxyBankOnboardingDocuments)
+	mux.HandleFunc("POST /v1/bank/onboarding/complete", s.proxyBankOnboardingComplete)
 	mux.HandleFunc("/", s.oidcProxy)
 	return s.cors(mux)
 }
