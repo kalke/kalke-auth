@@ -8,11 +8,21 @@ echo "starting keycloak on :${KC_HTTP_PORT}"
 /opt/keycloak/bin/kc.sh start --import-realm &
 KC_PID=$!
 
+# Management health (KC_HEALTH_ENABLED) — TCP on 8081 opens before bootstrap finishes;
+# kcadm against a bootstrapping server returns 503 and would crash the entrypoint.
+KC_MGMT_PORT="${KC_HTTP_MANAGEMENT_PORT:-9000}"
+kc_http_ready() {
+	local port="$1" path="$2" status=""
+	exec 3<>"/dev/tcp/127.0.0.1/${port}" 2>/dev/null || return 1
+	printf 'GET %s HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n' "$path" >&3
+	status="$(head -n1 <&3 2>/dev/null || true)"
+	exec 3>&- 3<&- 2>/dev/null || true
+	[[ "$status" == *" 200 "* ]]
+}
+
 ready=0
-for _ in $(seq 1 90); do
-	if (echo >"/dev/tcp/127.0.0.1/${KC_HTTP_PORT}") >/dev/null 2>&1; then
-		# port open; give health a moment
-		sleep 1
+for _ in $(seq 1 120); do
+	if kc_http_ready "$KC_MGMT_PORT" /health/ready; then
 		ready=1
 		break
 	fi
@@ -23,17 +33,28 @@ for _ in $(seq 1 90); do
 	sleep 2
 done
 if [[ "$ready" != "1" ]]; then
-	echo "keycloak not ready" >&2
+	echo "keycloak not ready (management /health/ready on :${KC_MGMT_PORT})" >&2
 	exit 1
 fi
 
 if [[ -n "${KC_BOOTSTRAP_ADMIN_USERNAME:-}" && -n "${KC_BOOTSTRAP_ADMIN_PASSWORD:-}" && -n "${KC_BFF_CLIENT_SECRET:-}" ]]; then
 	echo "configuring kalke-bff client secret"
-	/opt/keycloak/bin/kcadm.sh config credentials \
-		--server "http://127.0.0.1:${KC_HTTP_PORT}" \
-		--realm master \
-		--user "$KC_BOOTSTRAP_ADMIN_USERNAME" \
-		--password "$KC_BOOTSTRAP_ADMIN_PASSWORD"
+	kcadm_ok=0
+	for _ in $(seq 1 30); do
+		if /opt/keycloak/bin/kcadm.sh config credentials \
+			--server "http://127.0.0.1:${KC_HTTP_PORT}" \
+			--realm master \
+			--user "$KC_BOOTSTRAP_ADMIN_USERNAME" \
+			--password "$KC_BOOTSTRAP_ADMIN_PASSWORD"; then
+			kcadm_ok=1
+			break
+		fi
+		sleep 2
+	done
+	if [[ "$kcadm_ok" != "1" ]]; then
+		echo "kcadm login failed after retries" >&2
+		exit 1
+	fi
 	CID="$(/opt/keycloak/bin/kcadm.sh get clients -r kalke -q clientId=kalke-bff --fields id --format csv --noquotes | head -n1)"
 	if [[ -n "$CID" && "$CID" != "id" ]]; then
 		/opt/keycloak/bin/kcadm.sh update "clients/${CID}" -r kalke \
@@ -61,19 +82,18 @@ if [[ -n "${KC_BOOTSTRAP_ADMIN_USERNAME:-}" && -n "${KC_BOOTSTRAP_ADMIN_PASSWORD
 
 		find_exec_id() {
 			# $1=field (providerId|displayName) $2=exact or substring value
-			local field="$1" value="$2"
-			printf '%s\n' "$execs" | awk -v field="$field" -v value="$value" '
-				$0 ~ "\"id\"[[:space:]]*:" {
-					line=$0
-					sub(/^.*"id"[[:space:]]*:[[:space:]]*"/, "", line)
-					sub(/".*/, "", line)
-					id=line
-				}
-				$0 ~ ("\"" field "\"[[:space:]]*:") && index($0, value) {
-					print id
-					exit
-				}
-			'
+			# Pure bash — Keycloak image has neither awk nor python3.
+			local field="$1" value="$2" id="" line
+			while IFS= read -r line || [[ -n "$line" ]]; do
+				if [[ "$line" =~ \"id\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]]; then
+					id="${BASH_REMATCH[1]}"
+				fi
+				if [[ "$line" == *"\"${field}\""* && "$line" == *"${value}"* ]]; then
+					printf '%s\n' "$id"
+					return 0
+				fi
+			done <<<"$execs"
+			return 0
 		}
 
 		set_exec_req() {
