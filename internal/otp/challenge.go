@@ -31,6 +31,7 @@ var (
 
 type Challenge struct {
 	Email        string    `json:"email"`
+	UserSub      string    `json:"user_sub,omitempty"` // email-change: owner of the pending request
 	OTPHash      string    `json:"otp_hash"`
 	CreatedAt    time.Time `json:"created_at"`
 	LastSentAt   time.Time `json:"last_sent_at"`

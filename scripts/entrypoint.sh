@@ -67,6 +67,22 @@ if [[ -n "${KC_BOOTSTRAP_ADMIN_USERNAME:-}" && -n "${KC_BOOTSTRAP_ADMIN_PASSWORD
 		echo "kalke-bff client not found" >&2
 		exit 1
 	fi
+
+	# Keep M2M client secrets aligned with prod.env (realm import does not rotate them).
+	sync_client_secret() {
+		local client_id="$1" secret="$2" cid
+		[[ -n "$secret" ]] || return 0
+		cid="$(/opt/keycloak/bin/kcadm.sh get clients -r kalke -q "clientId=${client_id}" --fields id --format csv --noquotes | head -n1)"
+		if [[ -n "$cid" && "$cid" != "id" ]]; then
+			echo "configuring ${client_id} client secret"
+			/opt/keycloak/bin/kcadm.sh update "clients/${cid}" -r kalke -s "secret=${secret}"
+		else
+			echo "warning: ${client_id} client not found" >&2
+		fi
+	}
+	sync_client_secret pde-m2m "${PDE_M2M_CLIENT_SECRET:-}"
+	sync_client_secret ebank-m2m "${EBANK_M2M_CLIENT_SECRET:-}"
+
 	# Public OIDC issuer stays on auth.kalke.dev while KC_HOSTNAME is the Tunnel URL.
 	FRONTEND_URL="${KC_REALM_FRONTEND_URL:-https://auth.kalke.dev}"
 	echo "setting kalke realm frontendUrl=${FRONTEND_URL}"

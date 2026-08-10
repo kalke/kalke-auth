@@ -170,9 +170,10 @@ func (a *AdminClient) clearRequiredActions(ctx context.Context, tok, userID stri
 }
 
 type RealmUser struct {
-	ID      string
-	Email   string
-	Enabled bool
+	ID        string
+	Email     string
+	FirstName string
+	Enabled   bool
 }
 
 // FindUserByEmail returns the first exact email match in the kalke realm.
@@ -205,9 +206,10 @@ func (a *AdminClient) FindUserByEmail(ctx context.Context, email string) (RealmU
 		return RealmUser{}, fmt.Errorf("find user: %d %s", resp.StatusCode, string(body))
 	}
 	var users []struct {
-		ID      string `json:"id"`
-		Email   string `json:"email"`
-		Enabled bool   `json:"enabled"`
+		ID        string `json:"id"`
+		Email     string `json:"email"`
+		FirstName string `json:"firstName"`
+		Enabled   bool   `json:"enabled"`
 	}
 	if err := json.Unmarshal(body, &users); err != nil {
 		return RealmUser{}, err
@@ -223,7 +225,157 @@ func (a *AdminClient) FindUserByEmail(ctx context.Context, email string) (RealmU
 	if outEmail == "" {
 		outEmail = email
 	}
-	return RealmUser{ID: u.ID, Email: outEmail, Enabled: u.Enabled}, nil
+	return RealmUser{ID: u.ID, Email: outEmail, FirstName: strings.TrimSpace(u.FirstName), Enabled: u.Enabled}, nil
+}
+
+// GetUser returns a realm user by id.
+func (a *AdminClient) GetUser(ctx context.Context, userID string) (RealmUser, error) {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return RealmUser{}, fmt.Errorf("user id required")
+	}
+	tok, err := a.token(ctx)
+	if err != nil {
+		return RealmUser{}, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		a.internalBase+"/admin/realms/kalke/users/"+url.PathEscape(userID), nil)
+	if err != nil {
+		return RealmUser{}, err
+	}
+	req.Header.Set("Authorization", "Bearer "+tok)
+	resp, err := a.http.Do(req)
+	if err != nil {
+		return RealmUser{}, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode != http.StatusOK {
+		return RealmUser{}, fmt.Errorf("get user: %d %s", resp.StatusCode, string(body))
+	}
+	var u struct {
+		ID        string `json:"id"`
+		Email     string `json:"email"`
+		FirstName string `json:"firstName"`
+		Enabled   bool   `json:"enabled"`
+	}
+	if err := json.Unmarshal(body, &u); err != nil {
+		return RealmUser{}, err
+	}
+	if u.ID == "" {
+		return RealmUser{}, fmt.Errorf("user not found")
+	}
+	return RealmUser{
+		ID:        u.ID,
+		Email:     strings.ToLower(strings.TrimSpace(u.Email)),
+		FirstName: strings.TrimSpace(u.FirstName),
+		Enabled:   u.Enabled,
+	}, nil
+}
+
+// UpdateUserName sets firstName on the realm user.
+func (a *AdminClient) UpdateUserName(ctx context.Context, userID, name string) error {
+	userID = strings.TrimSpace(userID)
+	name = strings.TrimSpace(name)
+	if userID == "" {
+		return fmt.Errorf("user id required")
+	}
+	tok, err := a.token(ctx)
+	if err != nil {
+		return err
+	}
+	user, err := a.getUserMap(ctx, tok, userID)
+	if err != nil {
+		return err
+	}
+	// Keycloak rejects PUT payloads that include read-only fields from GET.
+	payload := map[string]any{
+		"username":        user["username"],
+		"email":           user["email"],
+		"firstName":       name,
+		"lastName":        user["lastName"],
+		"enabled":         user["enabled"],
+		"emailVerified":   true,
+		"requiredActions": []string{},
+	}
+	if attrs, ok := user["attributes"]; ok {
+		payload["attributes"] = attrs
+	}
+	return a.putUserMap(ctx, tok, userID, payload)
+}
+
+// UpdateUserEmail sets email + username (email-as-username) and marks email verified.
+func (a *AdminClient) UpdateUserEmail(ctx context.Context, userID, email string) error {
+	userID = strings.TrimSpace(userID)
+	email = strings.ToLower(strings.TrimSpace(email))
+	if userID == "" || email == "" {
+		return fmt.Errorf("user id and email required")
+	}
+	tok, err := a.token(ctx)
+	if err != nil {
+		return err
+	}
+	user, err := a.getUserMap(ctx, tok, userID)
+	if err != nil {
+		return err
+	}
+	payload := map[string]any{
+		"username":        email,
+		"email":           email,
+		"firstName":       user["firstName"],
+		"lastName":        user["lastName"],
+		"enabled":         user["enabled"],
+		"emailVerified":   true,
+		"requiredActions": []string{},
+	}
+	if attrs, ok := user["attributes"]; ok {
+		payload["attributes"] = attrs
+	}
+	return a.putUserMap(ctx, tok, userID, payload)
+}
+
+func (a *AdminClient) getUserMap(ctx context.Context, tok, userID string) (map[string]any, error) {
+	getReq, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		a.internalBase+"/admin/realms/kalke/users/"+url.PathEscape(userID), nil)
+	if err != nil {
+		return nil, err
+	}
+	getReq.Header.Set("Authorization", "Bearer "+tok)
+	getResp, err := a.http.Do(getReq)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = getResp.Body.Close() }()
+	rawUser, _ := io.ReadAll(io.LimitReader(getResp.Body, 1<<20))
+	if getResp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("get user: %d %s", getResp.StatusCode, string(rawUser))
+	}
+	var user map[string]any
+	if err := json.Unmarshal(rawUser, &user); err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+
+func (a *AdminClient) putUserMap(ctx context.Context, tok, userID string, user map[string]any) error {
+	raw, _ := json.Marshal(user)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut,
+		a.internalBase+"/admin/realms/kalke/users/"+url.PathEscape(userID), bytes.NewReader(raw))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := a.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
+		return fmt.Errorf("update user: %d %s", resp.StatusCode, string(b))
+	}
+	return nil
 }
 
 // ListRealmRoleNames returns effective realm role names for a user (composites expanded).

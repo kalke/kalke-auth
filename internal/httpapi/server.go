@@ -37,6 +37,7 @@ type Server struct {
 	pending   *signup.Store
 	loginOTP  *otp.Store
 	resetOTP  *otp.Store
+	emailOTP  *otp.Store
 	mailer    mail.Mailer
 	proxy     *httputil.ReverseProxy
 	pdeHTTP   *http.Client
@@ -72,6 +73,7 @@ func New(cfg config.Config, st *store.Store, kc *keycloak.Client, admin *keycloa
 		pending:   signup.NewStore(rdb, cfg.TokenPepper),
 		loginOTP:  otp.NewStore(rdb, cfg.TokenPepper, "login:otp:"),
 		resetOTP:  otp.NewStore(rdb, cfg.TokenPepper, "reset:otp:"),
+		emailOTP:  otp.NewStore(rdb, cfg.TokenPepper, "email:otp:"),
 		mailer:    mailer,
 		proxy:     proxy,
 		pdeHTTP:   &http.Client{Timeout: 180 * time.Second},
@@ -95,6 +97,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/auth/signup/resend", s.signupResend)
 	mux.HandleFunc("POST /v1/auth/logout", s.logout)
 	mux.HandleFunc("GET /v1/auth/me", s.me)
+	mux.HandleFunc("PATCH /v1/auth/me", s.updateProfile)
+	mux.HandleFunc("POST /v1/auth/email/change", s.emailChangeStart)
+	mux.HandleFunc("POST /v1/auth/email/change/verify", s.emailChangeVerify)
+	mux.HandleFunc("POST /v1/auth/email/change/resend", s.emailChangeResend)
 	mux.HandleFunc("POST /v1/auth/password", s.changePassword)
 	mux.HandleFunc("POST /v1/auth/password/forgot", s.forgotPasswordStart)
 	mux.HandleFunc("POST /v1/auth/password/forgot/verify", s.forgotPasswordVerify)
@@ -288,7 +294,12 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
+	name := ""
+	if u, err := s.admin.GetUser(r.Context(), p.UserSub); err == nil {
+		name = u.FirstName
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
+		"name":        name,
 		"email":       p.UserEmail,
 		"permissions": s.effectivePermissions(p.UserEmail, p.Permissions),
 	})
@@ -511,7 +522,7 @@ func (s *Server) cors(next http.Handler) http.Handler {
 				w.Header().Set("Vary", "Origin")
 				w.Header().Set("Access-Control-Allow-Credentials", "true")
 				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Kalke-Introspect-Key")
-				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
 			}
 		}
 		if r.Method == http.MethodOptions {

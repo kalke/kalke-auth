@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -65,6 +66,22 @@ func (s *Store) GetSession(ctx context.Context, id uuid.UUID) (Session, error) {
 func (s *Store) DeleteSession(ctx context.Context, id uuid.UUID) error {
 	_, err := s.pool.Exec(ctx, `DELETE FROM sessions WHERE id = $1`, id)
 	return err
+}
+
+func (s *Store) UpdateSessionEmail(ctx context.Context, id uuid.UUID, email string) error {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" {
+		return errors.New("email required")
+	}
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE sessions SET user_email = $2 WHERE id = $1 AND expires_at > now()`, id, email)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (s *Store) CreateAPIToken(ctx context.Context, t APIToken) error {

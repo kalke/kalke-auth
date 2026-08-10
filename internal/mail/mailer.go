@@ -37,6 +37,7 @@ const (
 	OTPSignup       OTPKind = "signup"
 	OTPPasswordless OTPKind = "passwordless"
 	OTPReset        OTPKind = "reset"
+	OTPEmailChange  OTPKind = "email_change"
 )
 
 func SignupOTPEmail(fromName, code string) (subject, text, html string) {
@@ -67,6 +68,10 @@ func OTPEmail(kind OTPKind, fromName, code string) (subject, text, html string) 
 		subjectLine = "Redefinir senha kalke"
 		headline = "Redefinir senha"
 		lead = "Use este código para escolher uma nova senha:"
+	case OTPEmailChange:
+		subjectLine = "Confirmar novo email kalke"
+		headline = "Confirmar novo email"
+		lead = "Use este código para confirmar o novo email da sua conta kalke:"
 	default:
 		subjectLine = "Seu código kalke"
 		headline = "Verificação de email"
