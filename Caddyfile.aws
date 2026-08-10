@@ -19,3 +19,12 @@ pde.kalke.dev {
 		header_up X-Real-IP {remote_host}
 	}
 }
+
+ebank.kalke.dev {
+	encode gzip
+	reverse_proxy ebank-api:8000 {
+		header_up X-Forwarded-Proto https
+		header_up X-Forwarded-Host {host}
+		header_up X-Real-IP {remote_host}
+	}
+}

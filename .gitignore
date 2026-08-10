@@ -4,11 +4,18 @@
 node_modules/
 .wrangler/
 dist/
+bin/
+vendor/
 *.log
+*.exe
+coverage.out
+go.work
+go.work.sum
 .idea/
 .vscode/
 *.swp
 .DS_Store
+*:Zone.Identifier
 
 # local production env (never commit)
 prod.env

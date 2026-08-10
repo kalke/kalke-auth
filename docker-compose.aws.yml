@@ -61,7 +61,7 @@ services:
   # Zero Trust Tunnel — public hostname keycloak.kalke.dev → http://auth:8081
   # Configure hostname + Access policy in Cloudflare dashboard (see DEPLOY.md).
   tunnel:
-    image: cloudflare/cloudflared:latest
+    image: cloudflare/cloudflared:2025.8.1
     restart: unless-stopped
     command: tunnel --no-autoupdate run
     env_file:
