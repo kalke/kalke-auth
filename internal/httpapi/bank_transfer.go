@@ -17,12 +17,12 @@ import (
 )
 
 type transferChallengeBody struct {
-	Amount                 string `json:"amount"`
-	Memo                   string `json:"memo"`
-	SourceAccountID        string `json:"source_account_id"`
-	DestinationAccount     string `json:"destination_account"`
-	DestinationAccountID   string `json:"destination_account_id"`
-	DestinationDocument    string `json:"destination_document"`
+	Amount               string `json:"amount"`
+	Memo                 string `json:"memo"`
+	SourceAccountID      string `json:"source_account_id"`
+	DestinationAccount   string `json:"destination_account"`
+	DestinationAccountID string `json:"destination_account_id"`
+	DestinationDocument  string `json:"destination_document"`
 }
 
 type transferConfirmBody struct {

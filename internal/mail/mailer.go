@@ -51,13 +51,13 @@ type TransferDetails struct {
 
 // TransferReceiptDetails is used for post-transfer sent/received notices.
 type TransferReceiptDetails struct {
-	Amount      string
-	Currency    string
+	Amount       string
+	Currency     string
 	Counterparty string // destination (sent) or origin (received) display line
-	Holder      string
-	Memo        string
-	Balance     string
-	When        string
+	Holder       string
+	Memo         string
+	Balance      string
+	When         string
 }
 
 func SignupOTPEmail(fromName, code string) (subject, text, html string) {
