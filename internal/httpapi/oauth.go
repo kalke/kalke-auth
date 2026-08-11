@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kalke/kalke-auth/internal/keycloak"
 	"github.com/kalke/kalke-auth/internal/security"
 )
 
@@ -98,12 +99,30 @@ func (s *Server) oauthCallback(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, s.oauthFailureURL(pending.ReturnTo), http.StatusFound)
 		return
 	}
+	s.syncOAuthProfile(r.Context(), user)
 	if _, err := s.createSession(w, r, user, user.Email); err != nil {
 		s.log.Error("oauth session", "err", err)
 		http.Redirect(w, r, s.oauthFailureURL(pending.ReturnTo), http.StatusFound)
 		return
 	}
 	http.Redirect(w, r, s.appendQuery(pending.ReturnTo, "oauth", "ok"), http.StatusFound)
+}
+
+func (s *Server) syncOAuthProfile(ctx context.Context, user keycloak.UserInfo) {
+	if user.Subject == "" {
+		return
+	}
+	first := strings.TrimSpace(user.GivenName)
+	last := strings.TrimSpace(user.FamilyName)
+	if first == "" && last == "" {
+		first, last = keycloak.SplitDisplayName(user.DisplayName())
+	}
+	if first == "" && last == "" {
+		return
+	}
+	if err := s.admin.UpdateUserNames(ctx, user.Subject, first, last); err != nil {
+		s.log.Warn("oauth name sync", "err", err, "sub", user.Subject)
+	}
 }
 
 func (s *Server) putOAuthPending(ctx context.Context, state string, p oauthPending) error {

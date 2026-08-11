@@ -33,7 +33,7 @@ func (s *Server) updateProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := strings.TrimSpace(*body.Name)
-	if name == "" || utf8.RuneCountInString(name) > 120 {
+	if utf8.RuneCountInString(name) < 2 || utf8.RuneCountInString(name) > 120 {
 		writeErr(w, http.StatusBadRequest, "invalid name")
 		return
 	}
@@ -42,9 +42,16 @@ func (s *Server) updateProfile(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadGateway, "profile update failed")
 		return
 	}
+	// Re-read so response matches what Keycloak stored (first + last).
+	display := name
+	if u, err := s.admin.GetUser(r.Context(), p.UserSub); err == nil {
+		if n := u.DisplayName(); n != "" {
+			display = n
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":          true,
-		"name":        name,
+		"name":        display,
 		"email":       p.UserEmail,
 		"permissions": s.effectivePermissions(p.UserEmail, p.Permissions),
 	})
@@ -168,7 +175,7 @@ func (s *Server) emailChangeVerify(w http.ResponseWriter, r *http.Request) {
 
 	name := ""
 	if u, err := s.admin.GetUser(r.Context(), p.UserSub); err == nil {
-		name = u.FirstName
+		name = u.DisplayName()
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":          true,

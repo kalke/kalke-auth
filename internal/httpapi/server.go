@@ -39,6 +39,7 @@ type Server struct {
 	resetOTP  *otp.Store
 	emailOTP  *otp.Store
 	xferOTP   *otp.TransferStore
+	pwdOTP    *otp.PasswordStore
 	mailer    mail.Mailer
 	proxy     *httputil.ReverseProxy
 	pdeHTTP   *http.Client
@@ -76,6 +77,7 @@ func New(cfg config.Config, st *store.Store, kc *keycloak.Client, admin *keycloa
 		resetOTP:  otp.NewStore(rdb, cfg.TokenPepper, "reset:otp:"),
 		emailOTP:  otp.NewStore(rdb, cfg.TokenPepper, "email:otp:"),
 		xferOTP:   otp.NewTransferStore(rdb, cfg.TokenPepper),
+		pwdOTP:    otp.NewPasswordStore(rdb, cfg.TokenPepper),
 		mailer:    mailer,
 		proxy:     proxy,
 		pdeHTTP:   &http.Client{Timeout: 180 * time.Second},
@@ -103,7 +105,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/auth/email/change", s.emailChangeStart)
 	mux.HandleFunc("POST /v1/auth/email/change/verify", s.emailChangeVerify)
 	mux.HandleFunc("POST /v1/auth/email/change/resend", s.emailChangeResend)
-	mux.HandleFunc("POST /v1/auth/password", s.changePassword)
+	mux.HandleFunc("POST /v1/auth/password", s.changePasswordStart)
+	mux.HandleFunc("POST /v1/auth/password/verify", s.changePasswordVerify)
+	mux.HandleFunc("POST /v1/auth/password/resend", s.changePasswordResend)
 	mux.HandleFunc("POST /v1/auth/password/forgot", s.forgotPasswordStart)
 	mux.HandleFunc("POST /v1/auth/password/forgot/verify", s.forgotPasswordVerify)
 	mux.HandleFunc("POST /v1/auth/password/forgot/resend", s.forgotPasswordResend)
@@ -178,10 +182,20 @@ func (s *Server) issueSession(w http.ResponseWriter, r *http.Request, user keycl
 		return err
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
+		"name":        s.displayNameFor(r.Context(), sess.UserSub, user),
 		"email":       sess.UserEmail,
 		"permissions": sess.Permissions,
 	})
 	return nil
+}
+
+func (s *Server) displayNameFor(ctx context.Context, userSub string, fallback keycloak.UserInfo) string {
+	if u, err := s.admin.GetUser(ctx, userSub); err == nil {
+		if name := u.DisplayName(); name != "" {
+			return name
+		}
+	}
+	return fallback.DisplayName()
 }
 
 func (s *Server) createSession(w http.ResponseWriter, r *http.Request, user keycloak.UserInfo, fallbackEmail string) (store.Session, error) {
@@ -213,7 +227,7 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request, user keyc
 	return sess, nil
 }
 
-func (s *Server) changePassword(w http.ResponseWriter, r *http.Request) {
+func (s *Server) changePasswordStart(w http.ResponseWriter, r *http.Request) {
 	p, err := s.principalFromRequest(r)
 	if err != nil {
 		writeErr(w, http.StatusUnauthorized, "unauthorized")
@@ -222,6 +236,10 @@ func (s *Server) changePassword(w http.ResponseWriter, r *http.Request) {
 	ip := clientIP(r)
 	if !s.allowRate(r.Context(), "password:"+ip, s.cfg.LoginRatePerMinute, time.Minute) {
 		writeErr(w, http.StatusTooManyRequests, "rate limit exceeded")
+		return
+	}
+	if strings.TrimSpace(p.UserEmail) == "" {
+		writeErr(w, http.StatusBadRequest, "account email required")
 		return
 	}
 	var body struct {
@@ -240,12 +258,129 @@ func (s *Server) changePassword(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
-	if err := s.admin.SetPassword(r.Context(), p.UserSub, body.NewPassword); err != nil {
+	pending, code, err := s.pwdOTP.New(p.UserSub, p.UserEmail, body.NewPassword)
+	if err != nil {
+		s.log.Error("password challenge create", "err", err)
+		writeErr(w, http.StatusInternalServerError, "password change failed")
+		return
+	}
+	if err := s.pwdOTP.Put(r.Context(), pending); err != nil {
+		s.log.Error("password challenge redis", "err", err)
+		writeErr(w, http.StatusServiceUnavailable, "password change unavailable")
+		return
+	}
+	if err := s.sendAuthOTP(r.Context(), mail.OTPPasswordChange, pending.Email, code); err != nil {
+		s.log.Error("password challenge mail", "err", err)
+		_ = s.pwdOTP.Delete(r.Context(), p.UserSub)
+		writeErr(w, http.StatusBadGateway, "email send failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":                   true,
+		"status":               "pending_verification",
+		"email_masked":         mail.MaskEmail(pending.Email),
+		"resend_after_seconds": int(otp.ResendCooldown.Seconds()),
+		"expires_in_seconds":   int(otp.OTPTTL.Seconds()),
+	})
+}
+
+func (s *Server) changePasswordVerify(w http.ResponseWriter, r *http.Request) {
+	p, err := s.principalFromRequest(r)
+	if err != nil {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	ip := clientIP(r)
+	if !s.allowRate(r.Context(), "password-verify:"+ip, s.cfg.LoginRatePerMinute*2, time.Minute) {
+		writeErr(w, http.StatusTooManyRequests, "rate limit exceeded")
+		return
+	}
+	var body struct {
+		Code string `json:"code"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	code := strings.TrimSpace(body.Code)
+	if code == "" {
+		writeErr(w, http.StatusBadRequest, "code required")
+		return
+	}
+	pending, err := s.pwdOTP.Get(r.Context(), p.UserSub)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "no pending password change")
+		return
+	}
+	if err := s.pwdOTP.Verify(&pending, code); err != nil {
+		_ = s.pwdOTP.Put(r.Context(), pending)
+		switch err {
+		case otp.ErrTooManyTries, otp.ErrOTPExpired:
+			_ = s.pwdOTP.Delete(r.Context(), p.UserSub)
+			writeErr(w, http.StatusUnauthorized, err.Error())
+		default:
+			writeErr(w, http.StatusUnauthorized, "invalid code")
+		}
+		return
+	}
+	newPassword, err := s.pwdOTP.OpenPassword(pending)
+	if err != nil {
+		_ = s.pwdOTP.Delete(r.Context(), p.UserSub)
+		writeErr(w, http.StatusInternalServerError, "password change failed")
+		return
+	}
+	_ = s.pwdOTP.Delete(r.Context(), p.UserSub)
+	if err := s.admin.SetPassword(r.Context(), p.UserSub, newPassword); err != nil {
 		s.log.Error("change password", "err", err, "sub", p.UserSub)
 		writeErr(w, http.StatusBadGateway, "password update failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) changePasswordResend(w http.ResponseWriter, r *http.Request) {
+	p, err := s.principalFromRequest(r)
+	if err != nil {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	ip := clientIP(r)
+	if !s.allowRate(r.Context(), "password-resend:"+ip, s.cfg.LoginRatePerMinute, time.Minute) {
+		writeErr(w, http.StatusTooManyRequests, "rate limit exceeded")
+		return
+	}
+	pending, err := s.pwdOTP.Get(r.Context(), p.UserSub)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "no pending password change")
+		return
+	}
+	if wait, ok := s.pwdOTP.ResendAllowed(pending); !ok {
+		writeJSON(w, http.StatusTooManyRequests, map[string]any{
+			"ok":                   false,
+			"resend_after_seconds": otp.SecondsUntil(time.Now().UTC().Add(wait)),
+		})
+		return
+	}
+	pending, code, err := s.pwdOTP.Rotate(pending)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "password change failed")
+		return
+	}
+	if err := s.pwdOTP.Put(r.Context(), pending); err != nil {
+		writeErr(w, http.StatusServiceUnavailable, "password change unavailable")
+		return
+	}
+	if err := s.sendAuthOTP(r.Context(), mail.OTPPasswordChange, pending.Email, code); err != nil {
+		s.log.Error("password challenge resend mail", "err", err)
+		writeErr(w, http.StatusBadGateway, "email send failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":                   true,
+		"email_masked":         mail.MaskEmail(pending.Email),
+		"resend_after_seconds": int(otp.ResendCooldown.Seconds()),
+		"expires_in_seconds":   int(otp.OTPTTL.Seconds()),
+	})
 }
 
 func passwordChangeValidationError(current, next string) string {
@@ -301,7 +436,7 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 	}
 	name := ""
 	if u, err := s.admin.GetUser(r.Context(), p.UserSub); err == nil {
-		name = u.FirstName
+		name = u.DisplayName()
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"name":        name,

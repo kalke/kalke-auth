@@ -34,11 +34,12 @@ func (m LogMailer) Send(_ context.Context, msg Message) error {
 type OTPKind string
 
 const (
-	OTPSignup       OTPKind = "signup"
-	OTPPasswordless OTPKind = "passwordless"
-	OTPReset        OTPKind = "reset"
-	OTPEmailChange  OTPKind = "email_change"
-	OTPTransfer     OTPKind = "transfer"
+	OTPSignup         OTPKind = "signup"
+	OTPPasswordless   OTPKind = "passwordless"
+	OTPReset          OTPKind = "reset"
+	OTPEmailChange    OTPKind = "email_change"
+	OTPTransfer       OTPKind = "transfer"
+	OTPPasswordChange OTPKind = "password_change"
 )
 
 type TransferDetails struct {
@@ -148,6 +149,10 @@ func OTPEmail(kind OTPKind, fromName, code string) (subject, text, html string) 
 		subjectLine = "Confirmar novo email kalke"
 		headline = "Confirmar novo email"
 		lead = "Use este código para confirmar o novo email da sua conta kalke:"
+	case OTPPasswordChange:
+		subjectLine = "Confirmar nova senha · kalke"
+		headline = "Confirmar nova senha"
+		lead = "Use este código para confirmar a troca de senha da sua conta kalke:"
 	default:
 		subjectLine = "Seu código kalke"
 		headline = "Verificação de email"

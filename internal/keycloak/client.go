@@ -37,18 +37,41 @@ type TokenResponse struct {
 }
 
 type accessClaims struct {
-	Sub         string   `json:"sub"`
-	Email       string   `json:"email"`
-	Permissions []string `json:"permissions"`
-	Scope       string   `json:"scope"`
-	Iss         string   `json:"iss"`
-	Aud         any      `json:"aud"`
+	Sub               string   `json:"sub"`
+	Email             string   `json:"email"`
+	Name              string   `json:"name"`
+	GivenName         string   `json:"given_name"`
+	FamilyName        string   `json:"family_name"`
+	PreferredUsername string   `json:"preferred_username"`
+	Permissions       []string `json:"permissions"`
+	Scope             string   `json:"scope"`
+	Iss               string   `json:"iss"`
+	Aud               any      `json:"aud"`
 }
 
 type UserInfo struct {
 	Subject     string
 	Email       string
+	Name        string
+	GivenName   string
+	FamilyName  string
 	Permissions []string
+}
+
+func (u UserInfo) DisplayName() string {
+	if n := strings.TrimSpace(u.Name); n != "" {
+		return n
+	}
+	first := strings.TrimSpace(u.GivenName)
+	last := strings.TrimSpace(u.FamilyName)
+	switch {
+	case first != "" && last != "":
+		return first + " " + last
+	case first != "":
+		return first
+	default:
+		return last
+	}
 }
 
 func (c *Client) PasswordLogin(ctx context.Context, username, password string) (UserInfo, error) {
@@ -125,10 +148,66 @@ func (c *Client) tokenUserInfo(ctx context.Context, form url.Values) (UserInfo, 
 	if len(perms) == 0 && claims.Scope != "" {
 		perms = strings.Fields(claims.Scope)
 	}
-	return UserInfo{
+	info := UserInfo{
 		Subject:     claims.Sub,
-		Email:       claims.Email,
+		Email:       strings.TrimSpace(claims.Email),
+		Name:        strings.TrimSpace(claims.Name),
+		GivenName:   strings.TrimSpace(claims.GivenName),
+		FamilyName:  strings.TrimSpace(claims.FamilyName),
 		Permissions: perms,
+	}
+	// Access tokens often omit profile claims; userinfo is the reliable source.
+	if ui, err := c.fetchUserInfo(ctx, tr.AccessToken); err == nil {
+		if ui.Email != "" {
+			info.Email = ui.Email
+		}
+		if ui.Name != "" {
+			info.Name = ui.Name
+		}
+		if ui.GivenName != "" {
+			info.GivenName = ui.GivenName
+		}
+		if ui.FamilyName != "" {
+			info.FamilyName = ui.FamilyName
+		}
+	}
+	return info, nil
+}
+
+type userInfoResponse struct {
+	Sub        string `json:"sub"`
+	Email      string `json:"email"`
+	Name       string `json:"name"`
+	GivenName  string `json:"given_name"`
+	FamilyName string `json:"family_name"`
+}
+
+func (c *Client) fetchUserInfo(ctx context.Context, accessToken string) (UserInfo, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		c.internalBase+"/realms/kalke/protocol/openid-connect/userinfo", nil)
+	if err != nil {
+		return UserInfo{}, err
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return UserInfo{}, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode != http.StatusOK {
+		return UserInfo{}, fmt.Errorf("userinfo failed: %d", resp.StatusCode)
+	}
+	var ui userInfoResponse
+	if err := json.Unmarshal(body, &ui); err != nil {
+		return UserInfo{}, err
+	}
+	return UserInfo{
+		Subject:    strings.TrimSpace(ui.Sub),
+		Email:      strings.TrimSpace(ui.Email),
+		Name:       strings.TrimSpace(ui.Name),
+		GivenName:  strings.TrimSpace(ui.GivenName),
+		FamilyName: strings.TrimSpace(ui.FamilyName),
 	}, nil
 }
 

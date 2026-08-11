@@ -173,7 +173,34 @@ type RealmUser struct {
 	ID        string
 	Email     string
 	FirstName string
+	LastName  string
 	Enabled   bool
+}
+
+// DisplayName returns first + last, trimmed.
+func (u RealmUser) DisplayName() string {
+	first := strings.TrimSpace(u.FirstName)
+	last := strings.TrimSpace(u.LastName)
+	switch {
+	case first != "" && last != "":
+		return first + " " + last
+	case first != "":
+		return first
+	default:
+		return last
+	}
+}
+
+// SplitDisplayName turns a single profile name into Keycloak first/last fields.
+func SplitDisplayName(name string) (first, last string) {
+	fields := strings.Fields(strings.TrimSpace(name))
+	if len(fields) == 0 {
+		return "", ""
+	}
+	if len(fields) == 1 {
+		return fields[0], ""
+	}
+	return fields[0], strings.Join(fields[1:], " ")
 }
 
 // FindUserByEmail returns the first exact email match in the kalke realm.
@@ -209,6 +236,7 @@ func (a *AdminClient) FindUserByEmail(ctx context.Context, email string) (RealmU
 		ID        string `json:"id"`
 		Email     string `json:"email"`
 		FirstName string `json:"firstName"`
+		LastName  string `json:"lastName"`
 		Enabled   bool   `json:"enabled"`
 	}
 	if err := json.Unmarshal(body, &users); err != nil {
@@ -225,7 +253,13 @@ func (a *AdminClient) FindUserByEmail(ctx context.Context, email string) (RealmU
 	if outEmail == "" {
 		outEmail = email
 	}
-	return RealmUser{ID: u.ID, Email: outEmail, FirstName: strings.TrimSpace(u.FirstName), Enabled: u.Enabled}, nil
+	return RealmUser{
+		ID:        u.ID,
+		Email:     outEmail,
+		FirstName: strings.TrimSpace(u.FirstName),
+		LastName:  strings.TrimSpace(u.LastName),
+		Enabled:   u.Enabled,
+	}, nil
 }
 
 // GetUser returns a realm user by id.
@@ -257,6 +291,7 @@ func (a *AdminClient) GetUser(ctx context.Context, userID string) (RealmUser, er
 		ID        string `json:"id"`
 		Email     string `json:"email"`
 		FirstName string `json:"firstName"`
+		LastName  string `json:"lastName"`
 		Enabled   bool   `json:"enabled"`
 	}
 	if err := json.Unmarshal(body, &u); err != nil {
@@ -269,14 +304,27 @@ func (a *AdminClient) GetUser(ctx context.Context, userID string) (RealmUser, er
 		ID:        u.ID,
 		Email:     strings.ToLower(strings.TrimSpace(u.Email)),
 		FirstName: strings.TrimSpace(u.FirstName),
+		LastName:  strings.TrimSpace(u.LastName),
 		Enabled:   u.Enabled,
 	}, nil
 }
 
-// UpdateUserName sets firstName on the realm user.
+// UpdateUserName sets firstName/lastName from a single display name.
 func (a *AdminClient) UpdateUserName(ctx context.Context, userID, name string) error {
 	userID = strings.TrimSpace(userID)
 	name = strings.TrimSpace(name)
+	if userID == "" {
+		return fmt.Errorf("user id required")
+	}
+	first, last := SplitDisplayName(name)
+	return a.UpdateUserNames(ctx, userID, first, last)
+}
+
+// UpdateUserNames sets first/last name on the realm user with a minimal PUT payload.
+func (a *AdminClient) UpdateUserNames(ctx context.Context, userID, firstName, lastName string) error {
+	userID = strings.TrimSpace(userID)
+	firstName = strings.TrimSpace(firstName)
+	lastName = strings.TrimSpace(lastName)
 	if userID == "" {
 		return fmt.Errorf("user id required")
 	}
@@ -288,18 +336,34 @@ func (a *AdminClient) UpdateUserName(ctx context.Context, userID, name string) e
 	if err != nil {
 		return err
 	}
-	// Keycloak rejects PUT payloads that include read-only fields from GET.
+	// Keep the representation lean: Keycloak rejects read-only broker fields on PUT.
 	payload := map[string]any{
-		"username":        user["username"],
-		"email":           user["email"],
-		"firstName":       name,
-		"lastName":        user["lastName"],
-		"enabled":         user["enabled"],
-		"emailVerified":   true,
-		"requiredActions": []string{},
+		"username":      user["username"],
+		"email":         user["email"],
+		"firstName":     firstName,
+		"lastName":      lastName,
+		"enabled":       true,
+		"emailVerified": true,
 	}
-	if attrs, ok := user["attributes"]; ok {
-		payload["attributes"] = attrs
+	if enabled, ok := user["enabled"].(bool); ok {
+		payload["enabled"] = enabled
+	}
+	if verified, ok := user["emailVerified"].(bool); ok {
+		payload["emailVerified"] = verified
+	}
+	if attrs, ok := user["attributes"].(map[string]any); ok {
+		// Drop broker/read-only noise; keep custom attrs if any.
+		clean := map[string]any{}
+		for k, v := range attrs {
+			lk := strings.ToLower(k)
+			if strings.Contains(lk, "federation") || strings.Contains(lk, "idp") {
+				continue
+			}
+			clean[k] = v
+		}
+		if len(clean) > 0 {
+			payload["attributes"] = clean
+		}
 	}
 	return a.putUserMap(ctx, tok, userID, payload)
 }
