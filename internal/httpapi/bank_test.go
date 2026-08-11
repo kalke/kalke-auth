@@ -19,18 +19,19 @@ func TestHasBankPermission(t *testing.T) {
 
 func TestJoinBankProxyPath(t *testing.T) {
 	cases := []struct {
-		prefix, display, cep, want string
+		prefix, display, cep, id, want string
 	}{
-		{"/v1/me/accounts/", "100123-4", "", "/v1/me/accounts/100123-4"},
-		{"/v1/me/accounts", "100123-4", "", "/v1/me/accounts/100123-4"},
-		{"/v1/cep/", "", "01310100", "/v1/cep/01310100"},
-		{"/v1/cep", "", "01310-100", "/v1/cep/01310-100"},
+		{"/v1/me/accounts/", "100123-4", "", "", "/v1/me/accounts/100123-4"},
+		{"/v1/me/accounts", "100123-4", "", "", "/v1/me/accounts/100123-4"},
+		{"/v1/cep/", "", "01310100", "", "/v1/cep/01310100"},
+		{"/v1/cep", "", "01310-100", "", "/v1/cep/01310-100"},
+		{"/v1/me/transactions/", "", "", "tx-1", "/v1/me/transactions/tx-1"},
 	}
 	for _, tc := range cases {
-		got := joinBankProxyPath(tc.prefix, tc.display, tc.cep)
+		got := joinBankProxyPath(tc.prefix, tc.display, tc.cep, tc.id)
 		if got != tc.want {
-			t.Fatalf("joinBankProxyPath(%q,%q,%q)=%q want %q",
-				tc.prefix, tc.display, tc.cep, got, tc.want)
+			t.Fatalf("joinBankProxyPath(%q,%q,%q,%q)=%q want %q",
+				tc.prefix, tc.display, tc.cep, tc.id, got, tc.want)
 		}
 	}
 }

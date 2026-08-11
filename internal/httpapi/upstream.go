@@ -91,7 +91,7 @@ func (s *Server) proxyUpstream(w http.ResponseWriter, r *http.Request, path stri
 	defer func() { _ = resp.Body.Close() }()
 
 	for _, h := range []string{
-		"Content-Type", "Cache-Control", "Retry-After",
+		"Content-Type", "Content-Disposition", "Cache-Control", "Retry-After",
 		"X-RateLimit-Limit", "X-RateLimit-Remaining", "X-Request-ID",
 	} {
 		if v := resp.Header.Get(h); v != "" {
@@ -99,7 +99,7 @@ func (s *Server) proxyUpstream(w http.ResponseWriter, r *http.Request, path stri
 		}
 	}
 	w.WriteHeader(resp.StatusCode)
-	_, _ = io.Copy(w, io.LimitReader(resp.Body, 8<<20))
+	_, _ = io.Copy(w, io.LimitReader(resp.Body, 32<<20))
 }
 
 func (s *Server) pdeUpstream() upstreamProxy {
@@ -144,11 +144,14 @@ func (s *Server) bankProxy(upstreamPath string) http.HandlerFunc {
 	}
 }
 
-// joinBankProxyPath appends display or cep path params onto an upstream prefix.
-func joinBankProxyPath(upstreamPrefix, display, cep string) string {
+// joinBankProxyPath appends display, cep, or id path params onto an upstream prefix.
+func joinBankProxyPath(upstreamPrefix, display, cep, id string) string {
 	suffix := display
 	if suffix == "" {
 		suffix = cep
+	}
+	if suffix == "" {
+		suffix = id
 	}
 	return strings.TrimRight(upstreamPrefix, "/") + "/" + suffix
 }
@@ -156,9 +159,20 @@ func joinBankProxyPath(upstreamPrefix, display, cep string) string {
 // bankProxyPath appends a path parameter onto a fixed upstream prefix.
 func (s *Server) bankProxyPath(upstreamPrefix string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		path := joinBankProxyPath(upstreamPrefix, r.PathValue("display"), r.PathValue("cep"))
+		path := joinBankProxyPath(
+			upstreamPrefix,
+			r.PathValue("display"),
+			r.PathValue("cep"),
+			r.PathValue("id"),
+		)
 		s.proxyUpstream(w, r, path, s.ebankUpstream())
 	}
+}
+
+func (s *Server) bankTxReceiptProxy(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	path := "/v1/me/transactions/" + id + "/receipt.pdf"
+	s.proxyUpstream(w, r, path, s.ebankUpstream())
 }
 
 func (s *Server) cachedM2MToken(ctx context.Context) (string, error) {
