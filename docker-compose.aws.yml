@@ -38,7 +38,6 @@ services:
         awslogs-region: ${AWS_REGION:-us-east-1}
         awslogs-group: /kalke/auth
         awslogs-create-group: "true"
-        awslogs-stream-prefix: auth
     expose:
       - "8080"
       - "8081"

@@ -35,7 +35,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	f, err := os.OpenFile(outPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	f, err := os.OpenFile(outPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600) // #nosec G703 -- path restricted to /tmp/kalke-secrets.env
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
