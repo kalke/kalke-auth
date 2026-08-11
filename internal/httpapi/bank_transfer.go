@@ -261,6 +261,9 @@ func (s *Server) transferConfirm(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadGateway, "upstream unavailable")
 		return
 	}
+	if status == http.StatusOK {
+		s.sendTransferReceipts(r.Context(), prin, pending, respBody)
+	}
 	for _, h := range []string{
 		"Content-Type", "Cache-Control", "Retry-After",
 		"X-RateLimit-Limit", "X-RateLimit-Remaining", "X-Request-ID",
@@ -271,6 +274,108 @@ func (s *Server) transferConfirm(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(status)
 	_, _ = w.Write(respBody)
+}
+
+type bankTransferResult struct {
+	Origin struct {
+		ID            string  `json:"id"`
+		DisplayNumber string  `json:"display_number"`
+		Balance       string  `json:"balance"`
+		HolderName    *string `json:"holder_name"`
+	} `json:"origin"`
+	Destination struct {
+		ID            string  `json:"id"`
+		DisplayNumber string  `json:"display_number"`
+		Balance       string  `json:"balance"`
+		HolderName    *string `json:"holder_name"`
+		HolderEmail   *string `json:"holder_email"`
+	} `json:"destination"`
+	Amount   string  `json:"amount"`
+	Memo     *string `json:"memo"`
+	Currency string  `json:"currency"`
+}
+
+func derefStr(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return strings.TrimSpace(*p)
+}
+
+func (s *Server) sendTransferReceipts(
+	ctx context.Context,
+	prin sessionPrincipal,
+	pending otp.TransferPending,
+	respBody []byte,
+) {
+	var result bankTransferResult
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		s.log.Warn("transfer receipt parse", "err", err)
+		return
+	}
+	when := time.Now().UTC().Format("2006-01-02 15:04 UTC")
+	currency := strings.TrimSpace(result.Currency)
+	if currency == "" {
+		currency = "USD"
+	}
+	amount := strings.TrimSpace(result.Amount)
+	if amount == "" {
+		amount = pending.Amount
+	}
+	memo := derefStr(result.Memo)
+	if memo == "" {
+		memo = pending.Memo
+	}
+	destDisplay := strings.TrimSpace(result.Destination.DisplayNumber)
+	if destDisplay == "" {
+		destDisplay = pending.DestinationDisplay
+	}
+	destHolder := derefStr(result.Destination.HolderName)
+	if destHolder == "" {
+		destHolder = pending.DestinationHolder
+	}
+
+	if email := strings.TrimSpace(prin.UserEmail); email != "" {
+		subject, text, html := mail.TransferSentEmail("kalke", mail.TransferReceiptDetails{
+			Amount:       amount,
+			Currency:     currency,
+			Counterparty: destDisplay,
+			Holder:       destHolder,
+			Memo:         memo,
+			Balance:      strings.TrimSpace(result.Origin.Balance),
+			When:         when,
+		})
+		if err := s.mailer.Send(ctx, mail.Message{
+			To: email, Subject: subject, Text: text, HTML: html,
+		}); err != nil {
+			s.log.Error("transfer sent mail", "err", err, "to", email)
+		}
+	}
+
+	recipientEmail := strings.ToLower(derefStr(result.Destination.HolderEmail))
+	senderEmail := strings.ToLower(strings.TrimSpace(prin.UserEmail))
+	if recipientEmail == "" || recipientEmail == senderEmail {
+		if recipientEmail == "" {
+			s.log.Info("transfer received mail skipped", "reason", "no recipient email")
+		}
+		return
+	}
+	originDisplay := strings.TrimSpace(result.Origin.DisplayNumber)
+	originHolder := derefStr(result.Origin.HolderName)
+	subject, text, html := mail.TransferReceivedEmail("kalke", mail.TransferReceiptDetails{
+		Amount:       amount,
+		Currency:     currency,
+		Counterparty: originDisplay,
+		Holder:       originHolder,
+		Memo:         memo,
+		Balance:      strings.TrimSpace(result.Destination.Balance),
+		When:         when,
+	})
+	if err := s.mailer.Send(ctx, mail.Message{
+		To: recipientEmail, Subject: subject, Text: text, HTML: html,
+	}); err != nil {
+		s.log.Error("transfer received mail", "err", err, "to", recipientEmail)
+	}
 }
 
 type bankResolveResult struct {
