@@ -13,20 +13,25 @@ import (
 	"github.com/kalke/kalke-auth/internal/db"
 	"github.com/kalke/kalke-auth/internal/httpapi"
 	"github.com/kalke/kalke-auth/internal/keycloak"
+	"github.com/kalke/kalke-auth/internal/logging"
 	"github.com/kalke/kalke-auth/internal/mail"
 	"github.com/kalke/kalke-auth/internal/migrate"
+	"github.com/kalke/kalke-auth/internal/secrets"
 	"github.com/kalke/kalke-auth/internal/store"
 )
 
 func main() {
-	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	slog.SetDefault(log)
-
-	cfg, err := config.Load()
-	if err != nil {
-		log.Error("config", "err", err)
+	boot := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	if err := secrets.MustLoad(); err != nil {
+		boot.Error("secrets", "err", err)
 		os.Exit(1)
 	}
+	cfg, err := config.Load()
+	if err != nil {
+		boot.Error("config", "err", err)
+		os.Exit(1)
+	}
+	log := logging.Setup("kalke-auth", cfg.LogLevel, cfg.LogFormat)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

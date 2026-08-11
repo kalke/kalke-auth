@@ -6,14 +6,16 @@ RUN go mod download
 COPY cmd ./cmd
 COPY internal ./internal
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/loadsecret ./cmd/loadsecret
 
 FROM quay.io/keycloak/keycloak:26.7
 USER root
 
 COPY --from=api-build /out/api /opt/kalke/api
+COPY --from=api-build /out/loadsecret /opt/kalke/loadsecret
 COPY keycloak/kalke-realm.prod.json /opt/keycloak/data/import/kalke-realm.json
 COPY scripts/entrypoint.sh /opt/kalke/entrypoint.sh
-RUN chmod 755 /opt/kalke/entrypoint.sh /opt/kalke/api
+RUN chmod 755 /opt/kalke/entrypoint.sh /opt/kalke/api /opt/kalke/loadsecret
 
 ENV KC_HTTP_ENABLED=true \
 	KC_HOSTNAME_STRICT=true \

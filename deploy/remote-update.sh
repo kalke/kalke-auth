@@ -5,6 +5,8 @@ set -euo pipefail
 
 REPO_DIR="${REPO_DIR:-${HOME}/kalke-auth}"
 BRANCH="${BRANCH:-main}"
+AWS_REGION="${AWS_REGION:-us-east-1}"
+SECRET_ID="${AUTH_SECRET_ID:-kalke/kalke-auth/prod}"
 
 if [[ -z "${GH_TOKEN:-}" ]]; then
   echo "GH_TOKEN is required (GitHub Actions passes this for private clone/pull)" >&2
@@ -32,20 +34,21 @@ git clean -fd
 # Drop token from remote URL so it is not stored on disk.
 git remote set-url origin "https://github.com/kalke/kalke-auth.git"
 
-# Upsert PDE + e-bank proxy settings from CI secrets.
-echo "==> Syncing PDE_* and EBANK_* into prod.env"
+# Merge PDE/EBANK M2M keys into Secrets Manager (and keep slim pointers in prod.env).
+echo "==> Syncing PDE_* and EBANK_* into Secrets Manager (${SECRET_ID})"
 umask 077
+export AWS_REGION SECRET_ID
 python3 - <<'PY'
-import os
+import json, os, subprocess
 from pathlib import Path
 
 path = Path("prod.env")
+region = os.environ.get("AWS_REGION") or "us-east-1"
+secret_id = os.environ["SECRET_ID"]
 
 def q(v: str) -> str:
     return "'" + v.replace("'", "'\"'\"'") + "'"
 
-# Non-empty values from the environment win; missing keys are left untouched
-# so a partial secret set cannot wipe a working prod.env.
 updates: dict[str, str] = {}
 for key in (
     "PDE_BASE_URL",
@@ -61,40 +64,94 @@ for key in (
     if val:
         updates[key] = val
 
-# Defaults when enabling the proxy for the first time.
 defaults = {
     "PDE_BASE_URL": "https://pde.kalke.dev",
     "PDE_M2M_CLIENT_ID": "pde-m2m",
     "EBANK_BASE_URL": "https://ebank.kalke.dev",
     "EBANK_M2M_CLIENT_ID": "ebank-m2m",
 }
-existing = path.read_text().splitlines()
+
+# Seed defaults from existing file when SM blob is still empty of these keys.
+file_vals: dict[str, str] = {}
+for line in path.read_text().splitlines():
+    s = line.strip()
+    if not s or s.startswith("#") or "=" not in s:
+        continue
+    k, v = s.split("=", 1)
+    file_vals[k.strip()] = v.strip().strip("'").strip('"')
+
 for key, default in defaults.items():
-    if key not in updates and not any(line.startswith(f"{key}=") for line in existing):
+    if key not in updates and key not in file_vals:
         updates[key] = default
 
-if not updates:
-    print("no PDE_*/EBANK_* secrets provided; leaving prod.env unchanged")
+raw_get = subprocess.run(
+    [
+        "aws", "secretsmanager", "get-secret-value",
+        "--region", region, "--secret-id", secret_id,
+        "--query", "SecretString", "--output", "text",
+    ],
+    capture_output=True, text=True,
+)
+data: dict = {}
+if raw_get.returncode == 0 and raw_get.stdout.strip():
+    try:
+        data = json.loads(raw_get.stdout)
+    except json.JSONDecodeError:
+        data = {}
+if not isinstance(data, dict):
+    data = {}
+
+# Prefer existing SM values; fill gaps from local prod.env (one-time migration).
+skip = {"AWS_REGION", "SECRET_ID", "KALKE_SECRETS_LOADED", "PLACEHOLDER"}
+for k, v in file_vals.items():
+    if k in skip:
+        continue
+    cur = data.get(k)
+    if cur in (None, "", "replace-me") or k not in data:
+        data[k] = v
+data.pop("PLACEHOLDER", None)
+
+for k, v in updates.items():
+    data[k] = v
+data["AWS_REGION"] = region
+data["LOG_FORMAT"] = data.get("LOG_FORMAT") or "json"
+
+if not data.get("DATABASE_URL") and not data.get("KC_DB_URL"):
+    raise SystemExit(
+        "refusing to publish empty auth secret; populate Secrets Manager or keep a fat prod.env once"
+    )
+
+raw = json.dumps(data)
+put = subprocess.run(
+    [
+        "aws", "secretsmanager", "put-secret-value",
+        "--region", region, "--secret-id", secret_id, "--secret-string", raw,
+    ],
+    capture_output=True, text=True,
+)
+if put.returncode != 0:
+    create = subprocess.run(
+        [
+            "aws", "secretsmanager", "create-secret",
+            "--region", region, "--name", secret_id, "--secret-string", raw,
+        ],
+        capture_output=True, text=True,
+    )
+    if create.returncode != 0:
+        raise SystemExit(
+            f"secretsmanager put/create failed: {put.stderr or put.stdout} / "
+            f"{create.stderr or create.stdout}"
+        )
+    print(f"created secret {secret_id}")
 else:
-    lines = path.read_text().splitlines(keepends=True)
-    out = []
-    seen: set[str] = set()
-    for line in lines:
-        s = line.strip()
-        if s and not s.startswith("#") and "=" in s:
-            k = s.split("=", 1)[0].strip()
-            if k in updates:
-                out.append(f"{k}={q(updates[k])}\n")
-                seen.add(k)
-                continue
-        out.append(line)
-    if out and not str(out[-1]).endswith("\n"):
-        out[-1] = str(out[-1]) + "\n"
-    for k, v in updates.items():
-        if k not in seen:
-            out.append(f"{k}={q(v)}\n")
-    path.write_text("".join(out))
-    print("updated:", ", ".join(sorted(updates)))
+    print(f"updated secret {secret_id}")
+
+# Slim bootstrap pointers only (entrypoint loadsecret fills the rest).
+path.write_text(
+    f"AWS_REGION={q(region)}\n"
+    f"SECRET_ID={q(secret_id)}\n"
+)
+print(f"wrote slim {path}; merged keys:", ", ".join(sorted(updates)) or "(none)")
 PY
 
 echo "==> Freeing Docker disk (t3.micro root is tight)"

@@ -38,10 +38,23 @@ func (s *Server) updateProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.admin.UpdateUserName(r.Context(), p.UserSub, name); err != nil {
-		s.log.Error("update name", "err", err, "sub", p.UserSub)
+		s.log.Error("auth.profile.update",
+			"outcome", "error",
+			"error_code", "profile_update_failed",
+			"sub", p.UserSub,
+			"email", p.UserEmail,
+			"err", err,
+			"request_id", requestIDFrom(r.Context()),
+		)
 		writeErr(w, http.StatusBadGateway, "profile update failed")
 		return
 	}
+	s.log.Info("auth.profile.update",
+		"outcome", "ok",
+		"sub", p.UserSub,
+		"email", p.UserEmail,
+		"request_id", requestIDFrom(r.Context()),
+	)
 	// Re-read so response matches what Keycloak stored (first + last).
 	display := name
 	if u, err := s.admin.GetUser(r.Context(), p.UserSub); err == nil {

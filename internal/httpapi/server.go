@@ -142,7 +142,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/bank/onboarding/documents", s.bankProxy("/v1/onboarding/documents"))
 	mux.HandleFunc("POST /v1/bank/onboarding/complete", s.bankProxy("/v1/onboarding/complete"))
 	mux.HandleFunc("/", s.oidcProxy)
-	return s.cors(mux)
+	return s.withAccessLog(s.cors(mux))
 }
 
 func (s *Server) health(w http.ResponseWriter, _ *http.Request) {

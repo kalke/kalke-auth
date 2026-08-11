@@ -72,6 +72,11 @@ func (s *Server) proxyUpstream(w http.ResponseWriter, r *http.Request, path stri
 	req.ContentLength = r.ContentLength
 	req.Header.Set("X-Kalke-User-Email", prin.UserEmail)
 	req.Header.Set("X-Kalke-User-Sub", prin.UserSub)
+	if rid := requestIDFrom(r.Context()); rid != "" {
+		req.Header.Set("X-Request-ID", rid)
+	} else if rid := strings.TrimSpace(r.Header.Get("X-Request-ID")); rid != "" {
+		req.Header.Set("X-Request-ID", rid)
+	}
 	if ip := clientIP(r); ip != "" {
 		req.Header.Set("X-Kalke-Client-IP", ip)
 	}
@@ -96,6 +101,11 @@ func (s *Server) proxyUpstream(w http.ResponseWriter, r *http.Request, path stri
 	} {
 		if v := resp.Header.Get(h); v != "" {
 			w.Header().Set(h, v)
+		}
+	}
+	if w.Header().Get("X-Request-ID") == "" {
+		if rid := requestIDFrom(r.Context()); rid != "" {
+			w.Header().Set("X-Request-ID", rid)
 		}
 	}
 	w.WriteHeader(resp.StatusCode)

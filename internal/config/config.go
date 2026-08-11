@@ -51,6 +51,8 @@ type Config struct {
 	EbankM2MClientSecret string
 	// EbankUserForwardSecret must match e-bank-api M2M_USER_FORWARD_SECRET.
 	EbankUserForwardSecret string
+	LogLevel               string
+	LogFormat              string
 }
 
 func Load() (Config, error) {
@@ -174,6 +176,8 @@ func Load() (Config, error) {
 		EbankM2MClientID:       getenv("EBANK_M2M_CLIENT_ID", "ebank-m2m"),
 		EbankM2MClientSecret:   ebankM2MSecret,
 		EbankUserForwardSecret: ebankForwardSecret,
+		LogLevel:               getenv("LOG_LEVEL", "info"),
+		LogFormat:              getenv("LOG_FORMAT", "json"),
 	}, nil
 }
 

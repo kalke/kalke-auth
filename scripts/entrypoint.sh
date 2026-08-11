@@ -4,6 +4,17 @@ set -euo pipefail
 KC_HTTP_PORT="${KC_HTTP_PORT:-8081}"
 export KC_HTTP_PORT
 
+# Optional: merge AWS Secrets Manager JSON into the environment before Keycloak/API.
+if [[ -n "${SECRET_ID:-}" && -x /opt/kalke/loadsecret ]]; then
+	echo "loading secrets from ${SECRET_ID}"
+	/opt/kalke/loadsecret /tmp/kalke-secrets.env "${SECRET_ID}"
+	set -a
+	# shellcheck disable=SC1091
+	. /tmp/kalke-secrets.env
+	set +a
+	rm -f /tmp/kalke-secrets.env
+fi
+
 echo "starting keycloak on :${KC_HTTP_PORT}"
 /opt/keycloak/bin/kc.sh start --import-realm &
 KC_PID=$!
