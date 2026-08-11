@@ -38,6 +38,7 @@ type Server struct {
 	loginOTP  *otp.Store
 	resetOTP  *otp.Store
 	emailOTP  *otp.Store
+	xferOTP   *otp.TransferStore
 	mailer    mail.Mailer
 	proxy     *httputil.ReverseProxy
 	pdeHTTP   *http.Client
@@ -74,6 +75,7 @@ func New(cfg config.Config, st *store.Store, kc *keycloak.Client, admin *keycloa
 		loginOTP:  otp.NewStore(rdb, cfg.TokenPepper, "login:otp:"),
 		resetOTP:  otp.NewStore(rdb, cfg.TokenPepper, "reset:otp:"),
 		emailOTP:  otp.NewStore(rdb, cfg.TokenPepper, "email:otp:"),
+		xferOTP:   otp.NewTransferStore(rdb, cfg.TokenPepper),
 		mailer:    mailer,
 		proxy:     proxy,
 		pdeHTTP:   &http.Client{Timeout: 180 * time.Second},
@@ -120,7 +122,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/bank/accounts/{display}", s.bankProxyPath("/v1/me/accounts/"))
 	mux.HandleFunc("GET /v1/bank/transactions", s.bankProxy("/v1/me/transactions"))
 	mux.HandleFunc("POST /v1/bank/transfers/resolve", s.bankProxy("/v1/me/transfers/resolve"))
-	mux.HandleFunc("POST /v1/bank/transfer", s.bankProxy("/v1/me/transfer"))
+	mux.HandleFunc("POST /v1/bank/transfer/challenge", s.transferChallengeStart)
+	mux.HandleFunc("POST /v1/bank/transfer/challenge/resend", s.transferChallengeResend)
+	mux.HandleFunc("POST /v1/bank/transfer", s.transferConfirm)
 	mux.HandleFunc("POST /v1/bank/withdraw", s.bankProxy("/v1/me/withdraw"))
 	mux.HandleFunc("GET /v1/bank/cep/{cep}", s.bankProxyPath("/v1/cep/"))
 	mux.HandleFunc("GET /v1/bank/onboarding", s.bankProxy("/v1/onboarding"))
