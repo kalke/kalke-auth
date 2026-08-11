@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -18,7 +19,11 @@ func main() {
 		fmt.Fprintln(os.Stderr, "usage: loadsecret <outfile> [secret-id]")
 		os.Exit(2)
 	}
-	outPath := os.Args[1]
+	outPath, err := safeOutPath(os.Args[1])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
 	sid := ""
 	if len(os.Args) >= 3 {
 		sid = strings.TrimSpace(os.Args[2])
@@ -47,4 +52,12 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+func safeOutPath(raw string) (string, error) {
+	cleaned := filepath.Clean(raw)
+	if cleaned != "/tmp/kalke-secrets.env" {
+		return "", fmt.Errorf("outfile must be /tmp/kalke-secrets.env")
+	}
+	return cleaned, nil
 }
