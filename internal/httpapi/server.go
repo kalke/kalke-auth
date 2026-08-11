@@ -116,6 +116,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/bank/bootstrap", s.bankProxy("/v1/demo/bootstrap"))
 	mux.HandleFunc("GET /v1/bank/account", s.bankProxy("/v1/me/account"))
 	mux.HandleFunc("GET /v1/bank/accounts", s.bankProxy("/v1/me/accounts"))
+	mux.HandleFunc("POST /v1/bank/accounts", s.bankProxy("/v1/me/accounts"))
 	mux.HandleFunc("GET /v1/bank/accounts/{display}", s.bankProxyPath("/v1/me/accounts/"))
 	mux.HandleFunc("GET /v1/bank/transactions", s.bankProxy("/v1/me/transactions"))
 	mux.HandleFunc("POST /v1/bank/transfers/resolve", s.bankProxy("/v1/me/transfers/resolve"))
