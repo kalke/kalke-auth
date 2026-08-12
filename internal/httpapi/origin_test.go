@@ -73,4 +73,20 @@ func TestRequireAllowedOrigin(t *testing.T) {
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("GET should skip origin check, got %d", rec.Code)
 	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/realms/kalke/login-actions/authenticate", nil)
+	req.Header.Set("Origin", "https://auth.kalke.dev")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("Keycloak hosted login POST should skip origin check, got %d", rec.Code)
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/v1/bank/withdraw", nil)
+	req.Header.Set("Origin", "https://auth.kalke.dev")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("auth.kalke.dev must not call /v1 writes, got %d", rec.Code)
+	}
 }

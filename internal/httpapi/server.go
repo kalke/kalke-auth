@@ -668,6 +668,10 @@ func (s *Server) requireAllowedOrigin(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		if !strings.HasPrefix(r.URL.Path, "/v1/") {
+			next.ServeHTTP(w, r)
+			return
+		}
 		origin := strings.TrimSpace(r.Header.Get("Origin"))
 		if origin == "" {
 			if ref := strings.TrimSpace(r.Header.Get("Referer")); ref != "" {
