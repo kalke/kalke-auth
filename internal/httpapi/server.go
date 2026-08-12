@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -142,7 +143,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/bank/onboarding/documents", s.bankProxy("/v1/onboarding/documents"))
 	mux.HandleFunc("POST /v1/bank/onboarding/complete", s.bankProxy("/v1/onboarding/complete"))
 	mux.HandleFunc("/", s.oidcProxy)
-	return s.withAccessLog(s.cors(mux))
+	return s.withAccessLog(s.cors(s.requireAllowedOrigin(mux)))
 }
 
 func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
@@ -653,13 +654,50 @@ func (s *Server) allowRate(ctx context.Context, key string, limit int, window ti
 	return n <= int64(limit)
 }
 
+func (s *Server) requireAllowedOrigin(next http.Handler) http.Handler {
+	allowed := map[string]struct{}{}
+	for _, o := range s.cfg.CORSOrigins {
+		o = strings.TrimRight(strings.TrimSpace(o), "/")
+		if o != "" {
+			allowed[o] = struct{}{}
+		}
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet, http.MethodHead, http.MethodOptions:
+			next.ServeHTTP(w, r)
+			return
+		}
+		origin := strings.TrimSpace(r.Header.Get("Origin"))
+		if origin == "" {
+			if ref := strings.TrimSpace(r.Header.Get("Referer")); ref != "" {
+				if u, err := url.Parse(ref); err == nil && u.Scheme != "" && u.Host != "" {
+					origin = u.Scheme + "://" + u.Host
+				}
+			}
+		}
+		if origin == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if _, ok := allowed[strings.TrimRight(origin, "/")]; ok {
+			next.ServeHTTP(w, r)
+			return
+		}
+		writeErr(w, http.StatusForbidden, "origin not allowed")
+	})
+}
+
 func (s *Server) cors(next http.Handler) http.Handler {
 	allowed := map[string]struct{}{}
 	for _, o := range s.cfg.CORSOrigins {
-		allowed[o] = struct{}{}
+		o = strings.TrimRight(strings.TrimSpace(o), "/")
+		if o != "" {
+			allowed[o] = struct{}{}
+		}
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		origin := r.Header.Get("Origin")
+		origin := strings.TrimRight(strings.TrimSpace(r.Header.Get("Origin")), "/")
 		if origin != "" {
 			if _, ok := allowed[origin]; ok {
 				w.Header().Set("Access-Control-Allow-Origin", origin)
@@ -692,18 +730,30 @@ func NewRedis(cfg config.Config) *redis.Client {
 	return redis.NewClient(opts)
 }
 
-func clientIP(r *http.Request) string {
-	if xff := r.Header.Get("CF-Connecting-IP"); xff != "" {
-		return xff
-	}
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		return strings.TrimSpace(strings.Split(xff, ",")[0])
-	}
-	host := r.RemoteAddr
-	if i := strings.LastIndex(host, ":"); i >= 0 {
-		return host[:i]
+func remoteIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
 	}
 	return host
+}
+
+func isTrustedHop(ipStr string) bool {
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return false
+	}
+	return ip.IsLoopback() || ip.IsPrivate()
+}
+
+func clientIP(r *http.Request) string {
+	remote := remoteIP(r)
+	if real := strings.TrimSpace(r.Header.Get("X-Real-IP")); real != "" && isTrustedHop(remote) {
+		if parsed := net.ParseIP(real); parsed != nil {
+			return real
+		}
+	}
+	return remote
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
