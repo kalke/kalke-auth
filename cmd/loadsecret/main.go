@@ -7,10 +7,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/kalke/kalke-auth/internal/secrets"
 )
+
+const secretsOutPath = "/tmp/kalke-secrets.env" // #nosec G101 -- fixed outfile path, not a credential
 
 // loadsecret fetches a JSON Secrets Manager blob and writes KEY=value lines
 // suitable for: set -a; . /path/to/file; set +a
@@ -35,7 +38,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	f, err := os.OpenFile(outPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600) // #nosec G703 -- path restricted to /tmp/kalke-secrets.env
+	f, err := openSecretsFile(outPath)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -56,8 +59,24 @@ func main() {
 
 func safeOutPath(raw string) (string, error) {
 	cleaned := filepath.Clean(raw)
-	if cleaned != "/tmp/kalke-secrets.env" {
-		return "", fmt.Errorf("outfile must be /tmp/kalke-secrets.env")
+	if cleaned != secretsOutPath {
+		return "", fmt.Errorf("outfile must be %s", secretsOutPath)
+	}
+	if fi, err := os.Lstat(cleaned); err == nil {
+		if fi.Mode()&os.ModeSymlink != 0 {
+			return "", fmt.Errorf("outfile must not be a symlink")
+		}
+	} else if !os.IsNotExist(err) {
+		return "", err
 	}
 	return cleaned, nil
+}
+
+func openSecretsFile(path string) (*os.File, error) {
+	// O_NOFOLLOW refuses to open through a symlink (closes TOCTOU after Lstat).
+	fd, err := syscall.Open(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY|syscall.O_NOFOLLOW, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	return os.NewFile(uintptr(fd), path), nil
 }
