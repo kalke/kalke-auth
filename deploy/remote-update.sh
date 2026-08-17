@@ -146,11 +146,21 @@ if put.returncode != 0:
 else:
     print(f"updated secret {secret_id}")
 
-# Slim bootstrap pointers only (entrypoint loadsecret fills the rest).
-path.write_text(
-    f"AWS_REGION={q(region)}\n"
-    f"SECRET_ID={q(secret_id)}\n"
-)
+# Slim bootstrap pointers (entrypoint loadsecret fills the rest).
+# Keep Postgres + tunnel token on disk so Compose interpolation survives slimming.
+lines = [
+    f"AWS_REGION={q(region)}\n",
+    f"SECRET_ID={q(secret_id)}\n",
+]
+for key in ("POSTGRES_PASSWORD", "POSTGRES_USER", "POSTGRES_DB", "CLOUDFLARE_TUNNEL_TOKEN"):
+    val = (
+        (os.environ.get(key) or "").strip()
+        or file_vals.get(key)
+        or (str(data.get(key)).strip() if data.get(key) not in (None, "replace-me") else "")
+    )
+    if val:
+        lines.append(f"{key}={q(val)}\n")
+path.write_text("".join(lines))
 print(f"wrote slim {path}; merged keys:", ", ".join(sorted(updates)) or "(none)")
 PY
 

@@ -22,3 +22,4 @@ prod.env
 .env.prod
 local.env
 gitleaks
+*.dump

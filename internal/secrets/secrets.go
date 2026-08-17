@@ -74,12 +74,25 @@ func FetchMap(ctx context.Context, secretID string) (map[string]string, error) {
 	return result, nil
 }
 
-// ApplyMap sets missing env keys (does not overwrite non-empty values).
-func ApplyMap(data map[string]string) {
+// WithoutExisting returns a copy of data omitting KALKE_SECRETS_LOADED and any
+// key that already has a non-empty value in the process environment.
+func WithoutExisting(data map[string]string) map[string]string {
+	out := make(map[string]string, len(data))
 	for k, v := range data {
+		if k == loadedEnv {
+			continue
+		}
 		if cur, ok := os.LookupEnv(k); ok && cur != "" {
 			continue
 		}
+		out[k] = v
+	}
+	return out
+}
+
+// ApplyMap sets missing env keys (does not overwrite non-empty values).
+func ApplyMap(data map[string]string) {
+	for k, v := range WithoutExisting(data) {
 		_ = os.Setenv(k, v)
 	}
 }

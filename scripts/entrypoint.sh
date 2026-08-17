@@ -5,6 +5,7 @@ KC_HTTP_PORT="${KC_HTTP_PORT:-8081}"
 export KC_HTTP_PORT
 
 # Optional: merge AWS Secrets Manager JSON into the environment before Keycloak/API.
+# loadsecret skips keys already set (Compose pins Docker Postgres URLs).
 if [[ -n "${SECRET_ID:-}" && -x /opt/kalke/loadsecret ]]; then
 	echo "loading secrets from ${SECRET_ID}"
 	/opt/kalke/loadsecret /tmp/kalke-secrets.env "${SECRET_ID}"
@@ -13,6 +14,18 @@ if [[ -n "${SECRET_ID:-}" && -x /opt/kalke/loadsecret ]]; then
 	. /tmp/kalke-secrets.env
 	set +a
 	rm -f /tmp/kalke-secrets.env
+fi
+
+# Re-pin Docker Postgres after SM load in case an older loadsecret overwrote URLs.
+if [[ -n "${POSTGRES_PASSWORD:-}" ]]; then
+	pg_user="${POSTGRES_USER:-kalke}"
+	pg_db="${POSTGRES_DB:-kalke}"
+	export KC_DB=postgres
+	export KC_DB_USERNAME="$pg_user"
+	export KC_DB_PASSWORD="$POSTGRES_PASSWORD"
+	export KC_DB_URL="jdbc:postgresql://postgres:5432/${pg_db}?sslmode=disable&currentSchema=keycloak"
+	export DATABASE_URL="postgres://${pg_user}:${POSTGRES_PASSWORD}@postgres:5432/${pg_db}?sslmode=disable"
+	export DB_SEARCH_PATH="${DB_SEARCH_PATH:-app}"
 fi
 
 echo "starting keycloak on :${KC_HTTP_PORT}"

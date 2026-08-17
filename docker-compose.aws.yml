@@ -1,15 +1,51 @@
-# Production stack for AWS Free Tier EC2 (t3.micro / t2.micro).
+# Production stack for AWS Free Tier EC2 (prefer t3.small / 2 GB with Postgres).
 # Keycloak + Go BFF behind Caddy (auth.kalke.dev).
 # Keycloak admin UI via Cloudflare Tunnel + Access (keycloak.kalke.dev).
+# Postgres is Docker-only — do not publish :5432.
 #
-#   cp prod.env.example prod.env   # fill secrets + CLOUDFLARE_TUNNEL_TOKEN
+#   cp prod.env.example prod.env   # POSTGRES_PASSWORD, Redis, Mailgun, KC, PDE_*, EBANK_*
 #   make aws-up
 #
 services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-kalke}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in prod.env}
+      POSTGRES_DB: ${POSTGRES_DB:-kalke}
+    command:
+      - postgres
+      - -c
+      - shared_buffers=64MB
+      - -c
+      - max_connections=50
+      - -c
+      - effective_cache_size=128MB
+    volumes:
+      - pgdata:/var/lib/postgresql
+      - ./deploy/postgres-init.sql:/docker-entrypoint-initdb.d/01-schemas.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
+    mem_limit: 192m
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${AWS_REGION:-us-east-1}
+        awslogs-group: /kalke/auth
+        awslogs-create-group: "true"
+
   auth:
     build: .
     image: kalke-auth:aws
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
     env_file:
       - prod.env
     environment:
@@ -32,6 +68,14 @@ services:
       LOG_FORMAT: json
       AWS_REGION: ${AWS_REGION:-us-east-1}
       SECRET_ID: ${AUTH_SECRET_ID:-kalke/kalke-auth/prod}
+      POSTGRES_USER: ${POSTGRES_USER:-kalke}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in prod.env}
+      POSTGRES_DB: ${POSTGRES_DB:-kalke}
+      KC_DB: postgres
+      KC_DB_USERNAME: ${POSTGRES_USER:-kalke}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in prod.env}
+      KC_DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-kalke}?sslmode=disable&currentSchema=keycloak
+      DATABASE_URL: postgres://${POSTGRES_USER:-kalke}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in prod.env}@postgres:5432/${POSTGRES_DB:-kalke}?sslmode=disable
     logging:
       driver: awslogs
       options:
@@ -84,3 +128,4 @@ services:
 volumes:
   caddy_data:
   caddy_config:
+  pgdata:
