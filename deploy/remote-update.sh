@@ -116,6 +116,41 @@ for k, v in updates.items():
 data["AWS_REGION"] = region
 data["LOG_FORMAT"] = data.get("LOG_FORMAT") or "json"
 
+# Docker Postgres only — drop leftover Neon URLs from older cutover blobs.
+pg_user = (
+    (os.environ.get("POSTGRES_USER") or "").strip()
+    or file_vals.get("POSTGRES_USER")
+    or str(data.get("POSTGRES_USER") or "kalke")
+)
+pg_db = (
+    (os.environ.get("POSTGRES_DB") or "").strip()
+    or file_vals.get("POSTGRES_DB")
+    or str(data.get("POSTGRES_DB") or "kalke")
+)
+pg_pw = (
+    (os.environ.get("POSTGRES_PASSWORD") or "").strip()
+    or file_vals.get("POSTGRES_PASSWORD")
+    or (str(data.get("POSTGRES_PASSWORD")).strip() if data.get("POSTGRES_PASSWORD") not in (None, "replace-me") else "")
+)
+data.pop("NEON_DATABASE_URL", None)
+for k in list(data):
+    v = data.get(k)
+    if isinstance(v, str) and "neon.tech" in v:
+        data.pop(k, None)
+if pg_pw:
+    data["POSTGRES_USER"] = pg_user
+    data["POSTGRES_DB"] = pg_db
+    data["POSTGRES_PASSWORD"] = pg_pw
+    data["KC_DB"] = "postgres"
+    data["KC_DB_USERNAME"] = pg_user
+    data["KC_DB_PASSWORD"] = pg_pw
+    data["KC_DB_URL"] = (
+        f"jdbc:postgresql://postgres:5432/{pg_db}?sslmode=disable&currentSchema=keycloak"
+    )
+    data["DATABASE_URL"] = (
+        f"postgres://{pg_user}:{pg_pw}@postgres:5432/{pg_db}?sslmode=disable"
+    )
+
 if not data.get("DATABASE_URL") and not data.get("KC_DB_URL"):
     raise SystemExit(
         "refusing to publish empty auth secret; populate Secrets Manager or keep a fat prod.env once"
