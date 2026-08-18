@@ -158,9 +158,19 @@ def to_direct(url: str) -> str:
     host = p.hostname or ""
     host = host.replace("-pooler", "")
     # Drop currentSchema (libpq ignores it; keep sslmode).
-    q = [(k, v) for k, v in parse_qsl(p.query, keep_blank_values=True) if k.lower() != "currentschema"]
-    if not any(k.lower() == "sslmode" for k, _ in q):
-        q.append(("sslmode", "require"))
+    q = []
+    ssl_true = False
+    for k, v in parse_qsl(p.query, keep_blank_values=True):
+        kl = k.lower()
+        if kl == "ssl":
+            ssl_true = v.lower() in ("1", "true", "require")
+            continue
+        if kl == "currentschema":
+            continue
+        q.append((k, v))
+    if ssl_true or not any(k.lower() == "sslmode" for k, _ in q):
+        if not any(k.lower() == "sslmode" for k, _ in q):
+            q.append(("sslmode", "require"))
     netloc = p.netloc
     if p.hostname:
         auth = ""
