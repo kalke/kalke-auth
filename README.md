@@ -25,12 +25,20 @@ Realm JSON changes: `make destroy && make up`.
 
 Push `main` → self-hosted runner `kalke-auth-ec2` → `make aws-up`.
 
+Postgres runs in Docker on the same instance (no public `:5432`). Prefer **t3.small (2 GB)** + 2G swap when PDE + e-bank share the box — a 1 GB `t3.micro` will OOM with Keycloak + Postgres.
+
 ```bash
 # one-time on the instance
 bash deploy/aws-bootstrap.sh
-cp prod.env.example prod.env   # Neon, Redis, Mailgun, KC, PDE_*, EBANK_*
-make aws-up
+cp prod.env.example prod.env   # POSTGRES_PASSWORD, Redis, Mailgun, KC, PDE_*, EBANK_*
+# URL-safe password (hex). aws-up generates one if missing.
+# POSTGRES_PASSWORD=$(openssl rand -hex 16)
+make aws-up                    # starts postgres, dumps Neon if the volume is empty, then auth
 ```
+
+Cutover from Neon: `make aws-up` runs `deploy/migrate-from-neon.sh --if-empty` (uses `NEON_DATABASE_URL` / `DATABASE_URL` in Secrets Manager while those still point at Neon). To re-run: `make aws-migrate-from-neon` or the **Migrate Neon to EC2 Postgres** workflow (`workflow_dispatch`). Leave Neon up until login on `https://auth.kalke.dev` looks good, then delete the Neon project.
+
+Optional later: cron `pg_dump` of the `postgres` container to S3. The Docker volume `pgdata` is the live data.
 
 | Host | Upstream |
 |------|----------|
@@ -39,5 +47,3 @@ make aws-up
 | `ebank.kalke.dev` | `ebank-api:8000` |
 
 DNS: grey-cloud A records → EIP. Keycloak admin via Tunnel + Access (`keycloak.kalke.dev`).
-
-With PDE + e-bank on the same box, prefer **t3.small (2 GB)** + 2G swap.

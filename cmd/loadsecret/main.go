@@ -45,7 +45,8 @@ func main() {
 	}
 	defer func() { _ = f.Close() }()
 	w := bufio.NewWriter(f)
-	for k, v := range data {
+	// Do not overwrite Compose-pinned values (e.g. local Docker DATABASE_URL).
+	for k, v := range secrets.WithoutExisting(data) {
 		val := strings.ReplaceAll(v, `'`, `'"'"'`)
 		fmt.Fprintf(w, "%s='%s'\n", k, val)
 	}

@@ -23,8 +23,8 @@ func Connect(ctx context.Context, databaseURL, searchPath string) (*pgxpool.Pool
 		if !safeIdent.MatchString(searchPath) {
 			return nil, fmt.Errorf("invalid DB_SEARCH_PATH")
 		}
-		// Neon pooler (transaction mode) drops session SET between checkouts.
-		// Re-apply search_path on every acquire.
+		// Transaction-mode poolers (and similar) drop session SET between
+		// checkouts. Re-apply search_path on every acquire.
 		quoted = pgx.Identifier{searchPath}.Sanitize()
 		setSQL := "SET search_path TO " + quoted + ", public"
 		cfg.PrepareConn = func(ctx context.Context, conn *pgx.Conn) (bool, error) {
