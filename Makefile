@@ -1,4 +1,4 @@
-.PHONY: help up down destroy logs restart ps token m2m-token ebank-m2m-token jwks open-admin validate setup aws-up aws-down aws-logs aws-ps aws-migrate-from-neon fmt test lint
+.PHONY: help up down destroy logs restart ps token m2m-token ebank-m2m-token jwks open-admin validate setup aws-up aws-down aws-logs aws-ps fmt test lint
 
 COMPOSE ?= docker compose
 AWS_COMPOSE_BASE ?= docker compose -f docker-compose.aws.yml --env-file prod.env
@@ -106,10 +106,10 @@ open-admin: ## Print admin console URL
 
 aws-up: ## Prod on AWS Free Tier EC2: postgres + auth + Caddy (+ tunnel if token set)
 	@test -f prod.env || { echo "prod.env missing — copy prod.env.example and fill secrets"; exit 1; }
-	@bash deploy/migrate-from-neon.sh --ensure-password
+	@chmod +x deploy/ensure-postgres-password.sh
+	@bash deploy/ensure-postgres-password.sh
 	@tok=$$(awk -F= '/^CLOUDFLARE_TUNNEL_TOKEN=/{sub(/^[^=]*=/,""); gsub(/^["'\'']+|["'\'']+$$/,""); print; exit}' prod.env 2>/dev/null); \
 	$(AWS_COMPOSE_BASE) up -d postgres --wait; \
-	bash deploy/migrate-from-neon.sh --if-empty; \
 	if [ -n "$$tok" ]; then \
 	  $(AWS_COMPOSE_BASE) --profile tunnel up -d --build; \
 	  echo "Public: https://auth.kalke.dev"; \
@@ -119,10 +119,6 @@ aws-up: ## Prod on AWS Free Tier EC2: postgres + auth + Caddy (+ tunnel if token
 	  echo "Public: https://auth.kalke.dev"; \
 	  echo "Tip: set CLOUDFLARE_TUNNEL_TOKEN in prod.env for keycloak.kalke.dev"; \
 	fi
-
-aws-migrate-from-neon: ## Dump Neon into local Docker Postgres (see deploy/migrate-from-neon.sh)
-	@test -f prod.env || { echo "prod.env missing"; exit 1; }
-	bash deploy/migrate-from-neon.sh
 
 aws-down: ## Stop AWS prod stack
 	$(AWS_COMPOSE_BASE) --profile tunnel down

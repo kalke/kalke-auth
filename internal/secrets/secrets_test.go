@@ -11,8 +11,8 @@ func TestWithoutExistingSkipsNonEmptyEnv(t *testing.T) {
 	os.Unsetenv("KC_DB_PASSWORD")
 
 	data := map[string]string{
-		"DATABASE_URL":         "postgres://neon",
-		"KC_DB_URL":            "jdbc:postgresql://neon/db",
+		"DATABASE_URL":         "postgres://sm.example/db",
+		"KC_DB_URL":            "jdbc:postgresql://sm.example/db",
 		"KC_DB_PASSWORD":       "from-sm",
 		"SESSION_SECRET":       "keep-me",
 		"KALKE_SECRETS_LOADED": "from-sm",
@@ -21,7 +21,7 @@ func TestWithoutExistingSkipsNonEmptyEnv(t *testing.T) {
 	if _, ok := got["DATABASE_URL"]; ok {
 		t.Fatalf("DATABASE_URL should stay Compose-pinned, got %q", got["DATABASE_URL"])
 	}
-	if got["KC_DB_URL"] != "jdbc:postgresql://neon/db" {
+	if got["KC_DB_URL"] != "jdbc:postgresql://sm.example/db" {
 		t.Fatalf("empty env should be filled from SM, got %q", got["KC_DB_URL"])
 	}
 	if got["KC_DB_PASSWORD"] != "from-sm" {

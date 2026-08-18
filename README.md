@@ -33,10 +33,8 @@ bash deploy/aws-bootstrap.sh
 cp prod.env.example prod.env   # POSTGRES_PASSWORD, Redis, Mailgun, KC, PDE_*, EBANK_*
 # URL-safe password (hex). aws-up generates one if missing.
 # POSTGRES_PASSWORD=$(openssl rand -hex 16)
-make aws-up                    # starts postgres, dumps Neon if the volume is empty, then auth
+make aws-up                    # starts Docker Postgres, then auth
 ```
-
-Cutover from Neon: `make aws-up` runs `deploy/migrate-from-neon.sh --if-empty` (uses `NEON_DATABASE_URL` / `DATABASE_URL` in Secrets Manager while those still point at Neon). To re-run: `make aws-migrate-from-neon` or the **Migrate Neon to EC2 Postgres** workflow (`workflow_dispatch`). Leave Neon up until login on `https://auth.kalke.dev` looks good, then delete the Neon project.
 
 Optional later: cron `pg_dump` of the `postgres` container to S3. The Docker volume `pgdata` is the live data.
 
