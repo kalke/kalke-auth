@@ -1,4 +1,4 @@
-.PHONY: help up down destroy logs restart ps token m2m-token ebank-m2m-token jwks open-admin validate setup aws-up aws-down aws-logs aws-ps aws-migrate-from-neon
+.PHONY: help up down destroy logs restart ps token m2m-token ebank-m2m-token jwks open-admin validate setup aws-up aws-down aws-logs aws-ps aws-migrate-from-neon fmt test lint
 
 COMPOSE ?= docker compose
 AWS_COMPOSE_BASE ?= docker compose -f docker-compose.aws.yml --env-file prod.env
@@ -81,6 +81,22 @@ ebank-m2m-token: ## M2M: client_credentials → access_token (ebank-m2m)
 	  -d "grant_type=client_credentials" \
 	  -d "client_id=$(EBANK_M2M_ID)" \
 	  -d "client_secret=$(EBANK_M2M_SECRET)" | python3 -c 'import sys,json; print(json.load(sys.stdin)["access_token"])'
+
+fmt: ## Format Go sources with gofmt
+	gofmt -w .
+
+test: ## Run Go tests (same as CI Test job)
+	go test ./...
+
+lint: validate ## Match GitHub Actions lint job (vet + gofmt)
+	go vet ./...
+	@unformatted=$$(gofmt -l .); \
+	if [ -n "$$unformatted" ]; then \
+	  echo "Files need gofmt:" >&2; \
+	  echo "$$unformatted" >&2; \
+	  gofmt -d .; \
+	  exit 1; \
+	fi
 
 validate: ## Validate realm JSON (same as CI)
 	node scripts/validate-realm.mjs
