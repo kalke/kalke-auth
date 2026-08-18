@@ -1,5 +1,5 @@
 # Go BFF only (local compose). Prod uses the combined Keycloak+API image.
-FROM golang:1.26.5-bookworm AS api-build
+FROM golang:1.26.6-bookworm AS api-build
 WORKDIR /src
 ENV GOTOOLCHAIN=auto
 COPY go.mod go.sum ./
