@@ -133,7 +133,7 @@ pg_pw = (
     or (str(data.get("POSTGRES_PASSWORD")).strip() if data.get("POSTGRES_PASSWORD") not in (None, "replace-me") else "")
 )
 data.pop("NEON_DATABASE_URL", None)
-for k in list(data):
+for k in ("DATABASE_URL", "KC_DB_URL"):
     v = data.get(k)
     if isinstance(v, str) and "neon.tech" in v:
         data.pop(k, None)
