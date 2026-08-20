@@ -206,5 +206,13 @@ docker image prune -af >/dev/null || true
 echo "==> Building and restarting stack"
 make aws-up
 
+# Sibling apps share kalke-auth_default; bring them back after a network recreate.
+for sibling in "${HOME}/e-bank-api" "${HOME}/personal-document-extractor"; do
+  if [[ -d "${sibling}" && -f "${sibling}/Makefile" && -f "${sibling}/prod.env" ]]; then
+    echo "==> Restarting sibling stack ${sibling}"
+    (cd "${sibling}" && make aws-up)
+  fi
+done
+
 echo "==> Status"
 make aws-ps
