@@ -106,9 +106,11 @@ open-admin: ## Print admin console URL
 
 aws-up: ## Prod on AWS Free Tier EC2: postgres + auth + Caddy (+ tunnel if token set)
 	@test -f prod.env || { echo "prod.env missing — copy prod.env.example and fill secrets"; exit 1; }
-	@chmod +x deploy/ensure-postgres-password.sh
+	@chmod +x deploy/ensure-postgres-password.sh deploy/ensure-private-network.sh
+	@bash deploy/ensure-private-network.sh
 	@bash deploy/ensure-postgres-password.sh
-	@tok=$$(awk -F= '/^CLOUDFLARE_TUNNEL_TOKEN=/{sub(/^[^=]*=/,""); gsub(/^["'\'']+|["'\'']+$$/,""); print; exit}' prod.env 2>/dev/null); \
+	@set -e; \
+	tok=$$(awk -F= '/^CLOUDFLARE_TUNNEL_TOKEN=/{sub(/^[^=]*=/,""); gsub(/^["'\'']+|["'\'']+$$/,""); print; exit}' prod.env 2>/dev/null); \
 	$(AWS_COMPOSE_BASE) up -d postgres --wait; \
 	if [ -n "$$tok" ]; then \
 	  $(AWS_COMPOSE_BASE) --profile tunnel up -d --build; \
@@ -118,7 +120,8 @@ aws-up: ## Prod on AWS Free Tier EC2: postgres + auth + Caddy (+ tunnel if token
 	  $(AWS_COMPOSE_BASE) up -d --build; \
 	  echo "Public: https://auth.kalke.dev"; \
 	  echo "Tip: set CLOUDFLARE_TUNNEL_TOKEN in prod.env for keycloak.kalke.dev"; \
-	fi
+	fi; \
+	$(AWS_COMPOSE_BASE) --profile tunnel ps | grep -q caddy || { echo "aws-up failed: caddy not running"; exit 1; }
 
 aws-down: ## Stop AWS prod stack
 	$(AWS_COMPOSE_BASE) --profile tunnel down
