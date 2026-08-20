@@ -1,0 +1,19 @@
+name: Configure WARP private routes
+
+on:
+  workflow_dispatch:
+
+jobs:
+  routes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Add Tunnel CIDR routes for Docker Postgres + EC2 SSH
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          EC2_PRIVATE_IP: "172.31.29.66"
+        run: |
+          set -euo pipefail
+          chmod +x deploy/cloudflare-warp-private-routes.sh
+          bash deploy/cloudflare-warp-private-routes.sh
