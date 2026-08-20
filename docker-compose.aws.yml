@@ -92,7 +92,7 @@ services:
       - "8081"
     mem_limit: 768m
     healthcheck:
-      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1:8080"]
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]
       interval: 15s
       timeout: 5s
       retries: 40
