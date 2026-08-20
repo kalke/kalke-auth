@@ -3,6 +3,7 @@
 # Keycloak admin UI via Cloudflare Tunnel + Access (keycloak.kalke.dev).
 # Postgres is Docker-only — do not publish :5432.
 # Static IPs on kalke-auth_default for Cloudflare WARP private routes (DBeaver).
+# Network key must stay "default" so Compose labels match the existing EC2 network name.
 #
 #   cp prod.env.example prod.env   # POSTGRES_PASSWORD, Redis, Mailgun, KC, PDE_*, EBANK_*
 #   make aws-up
@@ -40,7 +41,7 @@ services:
         awslogs-group: /kalke/auth
         awslogs-create-group: "true"
     networks:
-      kalke-auth:
+      default:
         ipv4_address: 172.18.10.10
 
   auth:
@@ -96,8 +97,6 @@ services:
       timeout: 5s
       retries: 40
       start_period: 240s
-    networks:
-      - kalke-auth
 
   caddy:
     image: caddy:2.10-alpine
@@ -113,8 +112,6 @@ services:
       - ./Caddyfile.aws:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
-    networks:
-      - kalke-auth
 
   # Zero Trust Tunnel — public hostname keycloak.kalke.dev → http://auth:8081
   # Private network routes (WARP): 172.18.10.10–12 Postgres + EC2 private IP for SSH.
@@ -133,11 +130,9 @@ services:
     mem_limit: 64m
     profiles:
       - tunnel
-    networks:
-      - kalke-auth
 
 networks:
-  kalke-auth:
+  default:
     name: kalke-auth_default
     ipam:
       config:
