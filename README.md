@@ -27,6 +27,8 @@ Push `main` → self-hosted runner `kalke-auth-ec2` → `make aws-up`.
 
 Postgres runs in Docker on the same instance (no public `:5432`). Prefer **t3.small (2 GB)** + 2G swap when PDE + e-bank share the box — a 1 GB `t3.micro` will OOM with Keycloak + Postgres.
 
+Admin DB access: Cloudflare WARP + Zero Trust private route to `172.18.10.10` (user/db `kalke`). Do not open host `:5432`.
+
 ```bash
 # one-time on the instance
 bash deploy/aws-bootstrap.sh

@@ -2,6 +2,7 @@
 # Keycloak + Go BFF behind Caddy (auth.kalke.dev).
 # Keycloak admin UI via Cloudflare Tunnel + Access (keycloak.kalke.dev).
 # Postgres is Docker-only — do not publish :5432.
+# Static IPs on kalke-auth_default for Cloudflare WARP private routes (DBeaver).
 #
 #   cp prod.env.example prod.env   # POSTGRES_PASSWORD, Redis, Mailgun, KC, PDE_*, EBANK_*
 #   make aws-up
@@ -38,6 +39,9 @@ services:
         awslogs-region: ${AWS_REGION:-us-east-1}
         awslogs-group: /kalke/auth
         awslogs-create-group: "true"
+    networks:
+      kalke-auth:
+        ipv4_address: 172.18.10.10
 
   auth:
     build: .
@@ -87,11 +91,13 @@ services:
       - "8081"
     mem_limit: 768m
     healthcheck:
-      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080"]
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1:8080"]
       interval: 15s
       timeout: 5s
       retries: 40
       start_period: 240s
+    networks:
+      - kalke-auth
 
   caddy:
     image: caddy:2.10-alpine
@@ -107,8 +113,11 @@ services:
       - ./Caddyfile.aws:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+    networks:
+      - kalke-auth
 
   # Zero Trust Tunnel — public hostname keycloak.kalke.dev → http://auth:8081
+  # Private network routes (WARP): 172.18.10.10–12 Postgres + EC2 private IP for SSH.
   # Keycloak admin UI via Cloudflare Tunnel + Access (not public Caddy).
   tunnel:
     image: cloudflare/cloudflared:2025.8.1
@@ -124,6 +133,15 @@ services:
     mem_limit: 64m
     profiles:
       - tunnel
+    networks:
+      - kalke-auth
+
+networks:
+  kalke-auth:
+    name: kalke-auth_default
+    ipam:
+      config:
+        - subnet: 172.18.10.0/24
 
 volumes:
   caddy_data:
