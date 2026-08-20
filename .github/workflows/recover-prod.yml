@@ -1,0 +1,38 @@
+name: Recover prod stack
+
+on:
+  workflow_dispatch:
+
+jobs:
+  recover:
+    runs-on: [self-hosted, linux, kalke-auth-ec2]
+    steps:
+      - name: Diagnose and restart stacks
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AUTH_SECRET_ID: ${{ secrets.AUTH_SECRET_ID }}
+          PDE_BASE_URL: ${{ secrets.PDE_BASE_URL }}
+          PDE_M2M_CLIENT_ID: ${{ secrets.PDE_M2M_CLIENT_ID }}
+          PDE_M2M_CLIENT_SECRET: ${{ secrets.PDE_M2M_CLIENT_SECRET }}
+          PDE_USER_FORWARD_SECRET: ${{ secrets.PDE_USER_FORWARD_SECRET }}
+          EBANK_BASE_URL: ${{ secrets.EBANK_BASE_URL }}
+          EBANK_M2M_CLIENT_ID: ${{ secrets.EBANK_M2M_CLIENT_ID }}
+          EBANK_M2M_CLIENT_SECRET: ${{ secrets.EBANK_M2M_CLIENT_SECRET }}
+          EBANK_USER_FORWARD_SECRET: ${{ secrets.EBANK_USER_FORWARD_SECRET }}
+        run: |
+          set -euo pipefail
+          echo "==> docker ps -a"
+          docker ps -a --format 'table {{.Names}}\t{{.Status}}\t{{.Networks}}' || true
+          echo "==> network"
+          docker network inspect kalke-auth_default --format '{{json .IPAM.Config}}' || true
+          echo "==> auth logs (tail)"
+          docker logs --tail 80 kalke-auth-auth-1 2>&1 || true
+          echo "==> postgres logs (tail)"
+          docker logs --tail 40 kalke-auth-postgres-1 2>&1 || true
+          REPO_DIR=/home/ubuntu/kalke-auth
+          chmod +x "${REPO_DIR}/deploy/remote-update.sh"
+          bash "${REPO_DIR}/deploy/remote-update.sh"
+          echo "==> final ps"
+          docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+          curl -fsS -o /dev/null -w 'auth:%{http_code}\n' http://127.0.0.1/ || true
